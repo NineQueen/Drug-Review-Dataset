@@ -3,6 +3,21 @@ from pyspark.sql import DataFrame
 
 
 class AnalyticsModel:
+    """Predictor trained on frames that already contain `embedding`.
+
+    `train(self, embedding_model)` fits on the training frame only and saves the model.
+    The saved directory is `{registry_key}__{embedding_model}`.
+    `predict(self, embedding_model)` loads that model and returns `(train_df, test_df)`.
+
+    Each returned frame has only `uniqueID`, `rating`, and `prediction`.
+    `rating` stays on the original 1-10 scale. `prediction` uses the same 0-9 classes as `rating_p1`.
+    Leave the prediction on that scale; `Scorer` builds `rating_pred = prediction + 1`.
+
+    A model that needs one feature vector calls `_feature_transform` with its own column list.
+    `weight`, when a model uses it, exists only on the training split.
+    The train and predict functions share one registry key, and that key must not contain `__`.
+    """
+
     train_registry = {}
     predict_registry = {}
 
