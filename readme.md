@@ -36,9 +36,8 @@ python -m pip install -r requirements.txt
 ## 运行入口
 
 - `project.ipynb`：完整集成，先 EDA 和预处理，再训练所有已注册 embedding、生成向量，再训练所有 analytics 组合并评分。
-- `experiments/embedding_pipeline.ipynb`：选择一个 `embedding_name`，运行该表示及已有 analytics 组合。
+- `experiments/embedding_pipeline.ipynb`：选择一个 `embedding_name`，运行该表示及已有 analytics 组合；设为 `tfidf` 即可检查 baseline 表示的流程。
 - `experiments/analytics_pipeline.ipynb`：选择一个 `analytics_name`，运行该分类器与本机已准备的 embedding 组合。
-- `experiments/embedding_baseline.ipynb`：默认选择 `tfidf`，用于检查 baseline 表示的流程。
 
 个人实验只评分本次运行产生的预测，不混入其他历史缓存。主 notebook 仍按已有公共循环做全量集成。TF-IDF + LR 是指定 baseline；自动跑出的其他 TF-IDF 组合不计入高级模型要求。
 
@@ -51,6 +50,7 @@ python -m pip install -r requirements.txt
 - 首次拉取没有 `data/processed/`，需先重建。后续只改自己的模型时，可复用匹配的输入缓存。
 - 主 notebook 复用 split 时，运行初始化单元格后，可从划分/编码单元格继续；原始数据和 EDA 单元格可跳过。直接 Run All 仍会执行原始数据与 EDA 检查。
 - 修改清洗、文本特征、`replacement.json`、哈希 seed 或公共编码后，需要重建 split 及全部下游结果。只改 embedding 时，需要更新该 embedding 及依赖它的分类器；只改分类器时，更新该模型和预测即可。
+- 修改已经被 kernel 导入的 `src/` 函数后，先重启 kernel，再设置 `REBUILD = True` 重建；仅重新执行 `from ... import ...` 会复用已加载的模块，可能继续调用旧实现。
 - 本地半成品或不再使用的缓存目录可以清理后重跑；加载器目前会检查对应目录的 train/test 是否齐全。请勿把不同输入版本的预测混在同一轮比较中。
 
 拟合模型可以随代码交接，但现有 runner 默认仍会执行训练。仅当模型与当前数据、编码和参数匹配时，才可在个人实验中保留上下文初始化并跳过相应训练调用，直接执行预测；仅把 `REBUILD` 改成 `False` 不会跳过训练。
