@@ -104,7 +104,7 @@ def my_classifier_predict(self, embedding_model: str) -> tuple[DataFrame, DataFr
 
 组合名按 `analytics__embedding` 排列，例如 `lr_weighted__tfidf`。评分表保留既有列名 `Embedding_Model` 和 `Analytic_Model`，不要自行重命名。`Scorer` 创建 `rating_pred = prediction + 1`，再与 `rating` 比较。Accuracy 与 support-weighted Precision / Recall / F1 越大越好；MAE / RMSE 用原始评分单位，越小越好。相同组合重加时只替换该组合，其他组合保留。
 
-`embedding_pipeline.ipynb` 只训练选中的 `embedding_name`，再运行已有 analytics；`analytics_pipeline.ipynb` 只训练选中的 `analytics_name`，使用本机已准备的所有 embedding。`embedding_baseline.ipynb` 默认 `tfidf`，用于 baseline 路径。个人 runner 只把当前 `test_pred_dict` 交给 Scorer。主 runner 做全量集成，不改成针对个人模型的特例。
+`embedding_pipeline.ipynb` 只训练选中的 `embedding_name`，设为 `tfidf` 即可检查 baseline 表示的流程，再运行已有 analytics；`analytics_pipeline.ipynb` 只训练选中的 `analytics_name`，使用本机已准备的所有 embedding。个人 runner 只把当前 `test_pred_dict` 交给 Scorer。主 runner 做全量集成，不改成针对个人模型的特例。
 
 `REBUILD` 仅控制输入准备，具体阶段见 README。新环境需要先生成本地缓存；有缓存时可以只重跑模型阶段。现有加载器枚举本地目录，半成品目录需清理或补跑。模型变化后重建受影响的下游结果，避免把旧预测当作新模型表现。
 

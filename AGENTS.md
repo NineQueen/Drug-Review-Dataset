@@ -72,9 +72,11 @@ Combined names use `analytics__embedding` in that order. Keep public column name
 
 The entry notebook creates one active SparkSession before constructing `DataOI`. Use the existing `local[*]` / 4g setup. Do not start a session in a model module or in `DataOI`. Restart the kernel after changing driver memory or after the JVM exits.
 
-`project.ipynb` is the integration runner. Personal runners are `experiments/embedding_pipeline.ipynb` and `experiments/analytics_pipeline.ipynb`; `embedding_baseline.ipynb` checks the TF-IDF path. Choose the assigned registry key in the runner. Personal scoring uses only that run's `test_pred_dict`; the main runner may aggregate saved results.
+`project.ipynb` is the integration runner. Personal runners are `experiments/embedding_pipeline.ipynb` and `experiments/analytics_pipeline.ipynb`; select `embedding_name = "tfidf"` in the embedding runner to check the baseline representation. Choose the assigned registry key in the runner. Personal scoring uses only that run's `test_pred_dict`; the main runner may aggregate saved results.
 
 `REBUILD` controls input preparation, not whether a model trains. On a fresh checkout, generated caches are absent: rebuild inputs once. Changes to cleaning, text features, `replacement.json`, split/seed, or shared encoding require rebuilding the split and downstream artifacts. Changes to an embedding require regenerating its frames and downstream classifiers. Existing files never update merely because code changed. Coordinate shared-data changes with the integration owner; do not independently change the dataset for one model comparison.
+
+After editing an already-imported shared function, restart the kernel before rebuilding. Re-executing `from ... import ...` reuses the loaded module and can keep the old implementation in memory.
 
 Use `.cache()` for reused frames. Preserve the current cache policy: do not introduce `StorageLevel`, `unpersist`, or `MEMORY_AND_DISK` as part of a model task. After editing/adding a registered module, restart the kernel and rerun. Do not reload only `base`: that can leave registries and already-imported modules out of sync. `importlib.reload` accepts modules, not classes; instances created before a reload retain the old class.
 
