@@ -2,6 +2,16 @@ from pyspark.sql import DataFrame
 
 
 class EmbeddingModel:
+    """Text representation fitted on the training split.
+
+    `train(self)` fits on `self.train` only, saves the model, and returns None.
+    `predict(self)` loads that model and returns `(train_df, test_df)`.
+
+    Each returned frame keeps the input columns and adds a vector column named `embedding`.
+    Analytics models read that column. Fit vocabulary and other statistics on `self.train` only.
+    The train and predict functions share one registry key, and that key must not contain `__`.
+    """
+
     train_registry = {}
     predict_registry = {}
 
