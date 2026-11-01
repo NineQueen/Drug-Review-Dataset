@@ -35,11 +35,7 @@ class Scorer:
         for model_name, df_pred in test_pred.items():
             # Directory names are `{analytics}__{embedding}`; score columns use embedding first.
             analytics_name, embedding_name = model_name.split("__")
-            self.add_model(embedding_name, analytics_name, df_pred.withColumn(
-                "rating_pred",
-                # Classifiers emit 0–9. Metrics compare `rating` with `rating_pred`.
-                F.col("prediction") + 1,
-            ))
+            self.add_model(embedding_name, analytics_name, df_pred)
 
     def _metrics(self, pred: DataFrame) -> dict[str, float]:
         # Precision, recall, and F1 are weighted by class support. Lower MAE and RMSE are better.
@@ -64,6 +60,11 @@ class Scorer:
 
     def add_model(self, embedding_name: str, analytics_name: str, df_pred: DataFrame) -> "Scorer":
         # Drop a stored row only when both names match.
+        df_pred = df_pred.withColumn(
+                "rating_pred",
+                # Classifiers emit 0–9. Metrics compare `rating` with `rating_pred`.
+                F.col("prediction") + 1,
+        )
         self.score = self.score.filter(
             (F.col("Embedding_Model") != embedding_name)
             | (F.col("Analytic_Model") != analytics_name)

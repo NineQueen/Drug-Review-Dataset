@@ -1,6 +1,6 @@
 from nltk.stem import PorterStemmer
 from pyspark.ml import Pipeline
-from pyspark.ml.feature import RegexTokenizer, StopWordsRemover, NGram
+from pyspark.ml.feature import NGram, RegexTokenizer, StopWordsRemover, Tokenizer
 from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.types import ArrayType, StringType
@@ -30,6 +30,14 @@ _CONTRACTION_EXPANSION_RULES = (
     (r"(i|you|he|she|it|we|they|that|there|who|what)'ll", "$1 will"),
     (r"let's", "let us"),
 )
+
+def baseline_text_feature_engineering(df: DataFrame) -> DataFrame:
+    """Basic text feature engineering for baseline TFIDF only: Tokenizer"""
+    pipeline = Pipeline(stages=[
+        Tokenizer(inputCol="review", outputCol="words_featured"),
+    ])
+    df = pipeline.fit(df).transform(df)
+    return df
 
 def normalize_review_text(text: Column) -> Column:
     """Repair and unify characters"""
@@ -154,7 +162,7 @@ def text_feature_engineering(
         return result
 
     df = df.withColumn(
-        "words_stem",
+        "words_featured",
         stem_words(F.col("words_nostop")),
     )
 
@@ -184,7 +192,7 @@ def text_feature_engineering(
             "uniqueID",
             "drugName",
             "condition",
-            "words_stem",
+            "words_featured",
             "days",
             "usefulCount_log",
             "rating",

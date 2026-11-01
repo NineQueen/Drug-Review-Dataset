@@ -7,24 +7,26 @@ from src.paths import EMBEDDING_MODELS_DIR
 
 
 @EmbeddingModel.train_register("tfidf")
-def TFIDF(self) -> None:
+def tfidf_train(self,model_name : str = "tfidf") -> None:
     # Fit on `self.train` only. Downstream models read the column `embedding`.
     pipeline = Pipeline(stages=[
         CountVectorizer(
-            inputCol="words_stem",
+            inputCol="words_featured",
             outputCol="tf",
-            vocabSize=5000,
+            vocabSize=20000,
             minDF=5,
         ),
         IDF(inputCol="tf", outputCol="embedding"),
     ])
-    tfidf_model = pipeline.fit(self.train)
-    model_path = EMBEDDING_MODELS_DIR / "tfidf"
+    self.tfidf_model = pipeline.fit(self.train)
+    model_path = EMBEDDING_MODELS_DIR / model_name
     model_path.parent.mkdir(parents=True, exist_ok=True)
-    tfidf_model.write().overwrite().save(str(model_path))
+    self.tfidf_model.write().overwrite().save(str(model_path))
 
 
 @EmbeddingModel.predict_register("tfidf")
-def TFIDF_predict(self) -> tuple[DataFrame, DataFrame]:
-    tfidf_model = PipelineModel.load(str(EMBEDDING_MODELS_DIR / "tfidf"))
-    return tfidf_model.transform(self.train), tfidf_model.transform(self.test)
+def tfidf_predict(self, model_name : str = "tfidf") -> tuple[DataFrame, DataFrame]:
+    if getattr(self, "tfidf_model", None) is None:
+        self.tfidf_model = PipelineModel.load(str(EMBEDDING_MODELS_DIR / model_name))
+    
+    return self.tfidf_model.transform(self.train), self.tfidf_model.transform(self.test)
