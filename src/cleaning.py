@@ -1,6 +1,6 @@
 import json
 
-from pyspark.sql import Column, DataFrame
+from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 
 from src.paths import REPLACEMENT_JSON
@@ -9,20 +9,6 @@ from src.paths import REPLACEMENT_JSON
 def data_cleaning(df: DataFrame) -> DataFrame:
     with open(REPLACEMENT_JSON, "r", encoding="utf-8") as f:
         replacement = json.load(f)
-
-    def normalize_review_text(text: Column) -> Column:
-        text = F.regexp_replace( # Unify apostrophe characters
-            text,
-            r"[\u2018\u2019\u02BC\uFF07\u0060\u00B4]",
-            "'",
-        )
-        text = F.regexp_replace(text, r"[\u201C\u201D]", '"') # Unify double quote characters
-        text = F.regexp_replace(text, r"\u200B", " ") # Remove zero-width space characters
-        text = F.regexp_replace(text, r"\u200E", "") # Remove direction mark characters inside words
-        text = F.regexp_replace(text, r"[\u0011\u007F\uFFFD]", "") # Remove control characters and damaged placeholders
-        text = F.regexp_replace(text, r"\u0456", "i") # Replace Cyrillic small letter 'i'
-        text = F.regexp_replace(text, r"i\u0307", "i") # Replace the observed dotted-i character
-        return F.trim(F.regexp_replace(text, r"(?U)\s+", " "))
 
     def replace_condition_and_review(df: DataFrame) -> DataFrame:
         pairs = []
@@ -62,40 +48,14 @@ def data_cleaning(df: DataFrame) -> DataFrame:
     remaining_entities = df.filter(F.col("review").rlike("&(#x?[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);")).count()
     print(f"After replacement: {remaining_conditions} `condition` values still match configured repairs, {remaining_entities} `review` values contain HTML entities")
 
-    # Repair characters before deduplication so equivalent reviews compare equal.
-    review_lower = F.lower(F.col("review"))
-    review_repaired = normalize_review_text(review_lower)
-
-    remaining_repairs = df.filter(
-        ~review_lower.eqNullSafe(review_repaired)
-    ).count()
-
-    print(
-        f"Before character repair: {remaining_repairs} `review` values "
-        "require character or whitespace normalization"
-    )
-
-    df = df.withColumn("review", review_repaired)
-
-    remaining_repairs = df.filter(
-        ~F.col("review").eqNullSafe(
-            normalize_review_text(F.col("review"))
-        )
-    ).count()
-
-    print(
-        f"After character repair: {remaining_repairs} `review` values "
-        "require character or whitespace normalization"
-    )
-
-    # Remove outer double quotation marks.
     df = df.withColumn(
         "review",
-        F.trim(F.regexp_replace(F.col("review"), r'^"|"$', "")),
+        F.regexp_replace(F.trim(F.regexp_replace("review", r'^"|"$', "")), r"\s+", " "),
     )
 
     # `dropDuplicates` does not define which copy survives. Keep the greater `usefulCount`, then the greater `uniqueID`.
     row_count = df.count()
+    df = df.withColumn("review", F.lower("review"))
     df_best = (
         df.groupBy("review")
         .agg(F.max(F.struct("usefulCount", "uniqueID")).alias("best"))

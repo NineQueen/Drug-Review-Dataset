@@ -14,12 +14,14 @@ embedding 成员只实现 `src/embeddings/<name>.py`：选择原评论或 token�
 
 主流程依次执行：原始 CSV → EDA → 清洗 → 文本特征 → ID 哈希划分和训练权重 → 类别编码 → embedding 训练 / 变换 → analytics 训练 / 预测 → 评分。所有训练函数先执行完，再执行对应预测阶段。
 
+清洗保持原有的整行过滤、已配置 condition / HTML 替换、外层引号与普通空白处理、小写化、确定性 review 去重及数值衍生列。原 TODO 1（旧 A2）起的额外字符与 Unicode 空白规范化，以及后续文本处理，统一放在文本特征阶段。所有已实现的通用文本修复均先写回 `review`，再从修复后的完整评论建立临时 `review_clean` 准备 token；token 处理不覆盖 `review`。当前通用修复只接入既有字符与空白函数，后续缩写、剂量格式等修复也应在临时列创建前更新 `review`，不以现有函数为最终修复边界。该阶段不改变行、ID 或标签，也不二次去重或新增永久文本列。后续新增规则只面向普遍问题，不维护数据集专属错拼或逐条评论例外。规范化碰撞需在比较模型前单独检查，不能把 token 或词干相同直接当成重复评论。
+
 `split_and_weight` 用 `pmod(xxhash64(uniqueID, SEED), 10000)`，桶号小于 8000 为训练，其余为测试，比例约 80/20。固定数据、ID 类型、Spark 版本和 seed 后，归属不受顺序或分区影响。默认 `SEED = 42`。预处理后样本集合变化时，需要统一重建和记录新基准，不能继续混用旧结果。
 
 传给 embedding 的 `self.train` / `self.test` 是 Spark DataFrame，保留以下列：
 
 - `uniqueID`：整数型样本 ID，一行一条评论，必须保留，不能重编。
-- `drugName`、`condition`、`review`：字符串。`review` 已经过共享清洗，不是未经处理的原始 CSV 文本。
+- `drugName`、`condition`、`review`：字符串。`review` 保存原有共享清洗与已实现通用修复后的完整评论；当前新增修复仅为迁移过来的字符、空白处理。当前临时列上的剂量合并、标点取舍等 token 准备结果用于生成 `words`，不覆盖此列；后续通用修复写回 `review` 的约定见上文。
 - `words`、`words_stem`：`array<string>`，分别为未词干化 token 和 TF-IDF 使用的词干。其他表示可直接读取 `review` 或 `words`。
 - `days`：整数，距 1970-01-01 的天数；`usefulCount_log`：double，`log1p(usefulCount)`。投票是在评论发表后累积的，解释模型应用场景时需说明输入条件。
 - `rating`：原始整数评分 1–10，仅作真值；`rating_p1`：整数分类标签 0–9。
