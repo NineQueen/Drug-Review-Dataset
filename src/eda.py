@@ -74,6 +74,11 @@ class EDA:
 
         print("`usefulCount`:")
         df.select("usefulCount").summary("min", "25%", "50%", "75%", "max").show()
+        # Here we can see duplicate records
+        # The same information, but with different drug names.
+        print("The highest `usefulCount` record:")
+        max_useful = df.agg(F.max("usefulCount")).first()[0]
+        df.filter(F.col("usefulCount") == max_useful).show(truncate=80)
         df.agg(
             F.variance("usefulCount").alias("variance"),
             F.stddev("usefulCount").alias("stddev"),
@@ -83,14 +88,23 @@ class EDA:
         useful_ax.set_xlabel("usefulCount")
 
         print("`review` length:")
-        length = F.length(F.col("review"))
-        df.select(length.alias("review_length")).summary("min", "25%", "50%", "75%", "max").show()
-        df.agg(
-            F.variance(length).alias("variance"),
-            F.stddev(length).alias("stddev"),
-            F.skewness(length).alias("skewness"),
+        df_length = df.withColumn(
+            "review_length",
+            F.length(F.col("review"))
+        )
+        max_length = df_length.agg(F.max("review_length")).first()[0]
+        min_length = df_length.agg(F.min("review_length")).first()[0]
+        df_length.select("review_length").summary("min", "25%", "50%", "75%", "max").show()
+        print("The longest `review` record:")
+        df_length.filter(F.col("review_length") == max_length).select(*df.columns).show(truncate = 80)
+        print("The abnormal short `review` records (shorter than 4 characters):")
+        df_length.filter(F.col("review_length") == min_length).select(*df.columns).show(truncate = 80)
+        df_length.agg(
+            F.variance("review_length").alias("variance"),
+            F.stddev("review_length").alias("stddev"),
+            F.skewness("review_length").alias("skewness"),
         ).show()
-        length_ax = df.select(length.alias("review_length")).toPandas().plot.hist(bins=40, range=(0, 1500), legend=False)
+        length_ax = df_length.select("review_length").toPandas().plot.hist(bins=40, range=(0, 1500), legend=False)
         length_ax.set_xlabel("review_length")
 
         for col in df.columns:
@@ -114,4 +128,3 @@ class EDA:
                 for j in range(i + 1, len(columns))
             )
         ).show()
-
