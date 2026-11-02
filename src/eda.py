@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+
 from pyspark.sql import functions as F
 from pyspark.sql import DataFrame
 
@@ -39,7 +41,7 @@ class EDA:
 
         df_review = df.groupBy("review").agg(
                         F.count("*").alias("n"),
-                        F.countDistinct("rating").alias("rating_n"),
+                        F.count_distinct("rating").alias("rating_n"),
                     ).filter((F.col("n") > 1))
         review_count = df_review.count()
         if review_count == 0:
@@ -77,7 +79,7 @@ class EDA:
         # Here we can see duplicate records
         # The same information, but with different drug names.
         print("The highest `usefulCount` record:")
-        max_useful = df.agg(F.max("usefulCount")).first()[0]
+        max_useful = df.agg(F.max("usefulCount")).collect()[0][0]
         df.filter(F.col("usefulCount") == max_useful).show(truncate=80)
         df.agg(
             F.variance("usefulCount").alias("variance"),
@@ -92,8 +94,8 @@ class EDA:
             "review_length",
             F.length(F.col("review"))
         )
-        max_length = df_length.agg(F.max("review_length")).first()[0]
-        min_length = df_length.agg(F.min("review_length")).first()[0]
+        max_length = df_length.agg(F.max("review_length")).collect()[0][0]
+        min_length = df_length.agg(F.min("review_length")).collect()[0][0]
         df_length.select("review_length").summary("min", "25%", "50%", "75%", "max").show()
         print("The longest `review` record:")
         df_length.filter(F.col("review_length") == max_length).select(*df.columns).show(truncate = 80)
@@ -128,3 +130,48 @@ class EDA:
                 for j in range(i + 1, len(columns))
             )
         ).show()
+
+    def correlation_heatmap(self) -> None:
+        df = self.df
+        print("="*32)
+        print("Data Field Correlation Heatmap")
+        print("="*32)
+
+        numeric = df.select(
+            "rating",
+            "usefulCount",
+            F.unix_date("date").alias("date"),
+        )
+        columns = numeric.columns
+        # Collect only the coefficients, not the full review dataset.
+        correlations = numeric.agg(
+            *(
+                F.corr(columns[i], columns[j]).alias(f"r_{i}_{j}")
+                for i in range(len(columns))
+                for j in range(len(columns))
+            )
+        ).collect()[0]
+        corr_matrix = [
+            [correlations[f"r_{i}_{j}"] for j in range(len(columns))]
+            for i in range(len(columns))
+        ]
+
+        fig, ax = plt.subplots(figsize=(7, 5))
+        im = ax.imshow(corr_matrix, cmap="RdBu_r", vmin=-1, vmax=1)
+        ax.set_xticks(range(len(columns)), columns, rotation=30, ha="right")
+        ax.set_yticks(range(len(columns)), columns)
+        ax.set(
+            title="Pairwise Pearson correlation in raw reviews",
+            xlabel="Numeric variable",
+            ylabel="Numeric variable",
+        )
+        for i in range(len(columns)):
+            for j in range(len(columns)):
+                value = corr_matrix[i][j]
+                ax.text(
+                    j, i, f"{value:.3f}", ha="center", va="center",
+                    color="white" if abs(value) > .6 else "black",
+                )
+        fig.colorbar(im, ax=ax, label="Pearson r (-1 to 1)")
+        fig.tight_layout()
+        plt.show()
