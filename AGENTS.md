@@ -22,23 +22,29 @@ Importing either package discovers sibling modules automatically. Do not edit `_
 
 Use a unique lowercase registry key. A single underscore is allowed; `__`, path separators, and duplicate keys are not. Register both train and predict with the same key. Use distinct function names such as `<name>_train` and `<name>_predict`.
 
+Store the fitted object on one instance attribute named for that model, such as `self.tfidf_model` or `self.lr_model`. Train assigns the attribute and writes the directory. Predict uses the attribute when it is already set; when it is missing or `None`, predict loads that directory with `getattr(self, "tfidf_model", None)`. One instance holds one fitted object, so a second save name needs another instance. Two classifiers on the same instance need two attribute names.
+
 ```python
 # Embedding module: self.train and self.test are Spark DataFrames.
 @EmbeddingModel.train_register("my_embedding")
-def my_embedding_train(self) -> None:
-    ...
+def my_embedding_train(self, model_name: str = "my_embedding") -> None:
+    self.my_embedding_model = ...  # fit, then save EMBEDDING_MODELS_DIR / model_name
 
 @EmbeddingModel.predict_register("my_embedding")
-def my_embedding_predict(self) -> tuple[DataFrame, DataFrame]:
+def my_embedding_predict(self, model_name: str = "my_embedding") -> tuple[DataFrame, DataFrame]:
+    if getattr(self, "my_embedding_model", None) is None:
+        self.my_embedding_model = ...  # load model_name
     ...  # Return train, then test.
 
-# Analytics module: embedding_model is the embedding registry key, a string.
+# Analytics module: embedding_model is the embedding name, a string.
 @AnalyticsModel.train_register("my_classifier")
 def my_classifier_train(self, embedding_model: str) -> None:
-    ...
+    self.my_classifier_model = ...  # fit, then save my_classifier__{embedding_model}
 
 @AnalyticsModel.predict_register("my_classifier")
 def my_classifier_predict(self, embedding_model: str) -> tuple[DataFrame, DataFrame]:
+    if getattr(self, "my_classifier_model", None) is None:
+        self.my_classifier_model = ...  # load that directory
     ...  # Return train predictions, then test predictions.
 ```
 

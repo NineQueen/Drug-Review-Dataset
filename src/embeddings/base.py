@@ -4,8 +4,12 @@ from pyspark.sql import DataFrame
 class EmbeddingModel:
     """Text representation fitted on the training split.
 
-    `train(self)` fits on `self.train` only, saves the model, and returns None.
-    `predict(self)` loads that model and returns `(train_df, test_df)`.
+    Give the fitted object one attribute on this instance, such as `self.tfidf_model`.
+    `train(self, model_name)` fits on `self.train` only, assigns that attribute, and saves
+    the model under `EMBEDDING_MODELS_DIR / model_name`.
+    `predict(self, model_name)` uses the attribute when it is already set. When the attribute
+    is missing or None, it loads `model_name` from disk and assigns the attribute.
+    One instance keeps one fitted object. A different `model_name` needs another instance.
 
     Each returned frame keeps the input columns and adds a vector column named `embedding`.
     Analytics models read that column. Fit vocabulary and other statistics on `self.train` only.

@@ -49,16 +49,22 @@ from src.embeddings.base import EmbeddingModel
 from src.paths import EMBEDDING_MODELS_DIR
 
 @EmbeddingModel.train_register("my_embedding")
-def my_embedding_train(self) -> None:
-    ...
+def my_embedding_train(self, model_name: str = "my_embedding") -> None:
+    self.my_embedding_model = ...  # fit on self.train
+    # save to EMBEDDING_MODELS_DIR / model_name
 
 @EmbeddingModel.predict_register("my_embedding")
-def my_embedding_predict(self) -> tuple[DataFrame, DataFrame]:
+def my_embedding_predict(self, model_name: str = "my_embedding") -> tuple[DataFrame, DataFrame]:
+    if getattr(self, "my_embedding_model", None) is None:
+        self.my_embedding_model = ...  # load EMBEDDING_MODELS_DIR / model_name
     ...
 ```
 
-- `train(self)`：只在 `self.train` 上拟合，模型保存到 `EMBEDDING_MODELS_DIR / "my_embedding"`。加载预训练模型不等于允许在测试集做适配或调参。
-- `predict(self)`：加载自身模型，对 `self.train`、`self.test` 变换，并按这个顺序返回两个 DataFrame。不要在预测阶段重新拟合词表或任何学习得到的变换。
+每个模型在实例上用一个固定属性保存拟合结果，例如 `self.tfidf_model`。`model_name` 是磁盘目录名，默认可与注册名相同；基线可以传入另一个名字，例如 `"baseline"`。
+
+- `train`：只在 `self.train` 上拟合，把结果赋给自己的属性，并保存到 `EMBEDDING_MODELS_DIR / model_name`。加载预训练模型不等于允许在测试集做适配或调参。
+- `predict`：属性已有值就直接用它变换。属性不存在或为 `None` 时，再按 `model_name` 从磁盘加载并赋给该属性。不要在预测阶段重新拟合词表或任何学习得到的变换。
+- 一个实例只保留这一份拟合对象。换一个 `model_name` 时另建一个 `EmbeddingModel`。
 - 返回表保留全部原有列和样本，并新增 `embedding`。其类型必须为 Spark ML `VectorUDT`，例如 DenseVector 或 SparseVector；数组 / Python list 应在模型内部转为向量。
 - 同一模型的训练 / 测试向量维数一致，不能有 null、NaN 或无限值。不可为了处理失败样本而静默删行或改变 ID；模型内部必须给出保持样本覆盖的处理方式。
 - 模型专用的文本处理可以放在自己文件里，但不覆盖公共 `review`、`words` 或 `words_stem`。
@@ -72,12 +78,17 @@ from src.paths import ANALYTIC_MODELS_DIR
 
 @AnalyticsModel.train_register("my_classifier")
 def my_classifier_train(self, embedding_model: str) -> None:
-    ...
+    self.my_classifier_model = ...  # fit on the training frame
+    # save to ANALYTIC_MODELS_DIR / f"my_classifier__{embedding_model}"
 
 @AnalyticsModel.predict_register("my_classifier")
 def my_classifier_predict(self, embedding_model: str) -> tuple[DataFrame, DataFrame]:
+    if getattr(self, "my_classifier_model", None) is None:
+        self.my_classifier_model = ...  # load that directory
     ...
 ```
+
+分类器同样把拟合结果放在自己的属性上，例如 `self.lr_model`、`self.lr_improved_model`。同一实例上的不同分类器必须使用不同属性，避免后训练的模型盖掉先训练的。
 
 `embedding_model` 是表示的注册名字符串，例如 `tfidf`，不是模型对象。实例保存 `self.train_embedding` / `self.test_embedding`，其中包含上一节的列和 `embedding`。
 
@@ -85,7 +96,7 @@ def my_classifier_predict(self, embedding_model: str) -> tuple[DataFrame, DataFr
 
 分类器在训练集用 `labelCol="rating_p1"` 拟合。不得把 `rating`、`rating_p1` 或 `weight` 拼入输入特征。若加权，用分类器的权重参数读取训练集 `weight`。缩放器、降维器等也只在训练集拟合，并与模型一起保存以供预测复用。
 
-模型保存到 `ANALYTIC_MODELS_DIR / f"my_classifier__{embedding_model}"`，不同表示不能共用同一模型目录。预测按 train / test 顺序返回，每个表恰好三列：
+模型保存到 `ANALYTIC_MODELS_DIR / f"my_classifier__{embedding_model}"`，不同表示不能共用同一模型目录。预测时属性已有值就直接用；为空再加载这个目录。换一个 embedding 名字时另建一个 `AnalyticsModel`。预测按 train / test 顺序返回，每个表恰好三列：
 
 - `uniqueID`：保留原 ID。
 - `rating`：保留 1–10 的原评分。
@@ -115,7 +126,7 @@ def my_classifier_predict(self, embedding_model: str) -> tuple[DataFrame, DataFr
 1. 只改分配的模型文件；可选依赖和共享变更需求已经说明。
 2. train / predict 成对注册，包导入时能发现；导入本身不触发训练。
 3. 对同一输入，embedding 保留样本及列、向量维数一致；analytics 返回恰好三列，标签与预测尺度正确。
-4. 拟合仅使用训练数据，预测加载相匹配的模型，保存路径不覆盖他人产物。
+4. 拟合仅使用训练数据，并写入该模型自己的实例属性。预测优先使用已有属性；为空时按传入的名字加载对应目录，保存路径不覆盖他人产物。
 5. 小样本能跑通该模型的训练 / 预测 / 评分；记录实际跑过的组合、参数、seed、依赖和结果。未跑的实验不能写成已通过。
 6. 拟合模型可交接；`data/processed/` 不提交。提交 notebook 前清空输出，未经用户要求不自行 commit 或 push。
 
