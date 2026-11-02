@@ -16,19 +16,6 @@ def lr_train(self, embedding_model: str) -> None:
     self.lr_model.write().overwrite().save(str(model_path))
 
 
-@AnalyticsModel.train_register("lr_weighted")
-def lr_weighted_train(self, embedding_model: str) -> None:
-    # `weight` exists only on the training split.
-    train_df, _ = self._feature_transform(FEATURES)
-    self.lr_weighted_model = LogisticRegression(
-        featuresCol="features",
-        labelCol="rating_p1",
-        weightCol="weight",
-    ).fit(train_df)
-    model_path = ANALYTIC_MODELS_DIR / f"lr_weighted__{embedding_model}"
-    model_path.parent.mkdir(parents=True, exist_ok=True)
-    self.lr_weighted_model.write().overwrite().save(str(model_path))
-
 @AnalyticsModel.predict_register("lr")
 def lr_predict(self, embedding_model: str) -> tuple[DataFrame, DataFrame]:
     train_df, test_df = self._feature_transform(FEATURES)
@@ -43,14 +30,33 @@ def lr_predict(self, embedding_model: str) -> tuple[DataFrame, DataFrame]:
     )
 
 
-@AnalyticsModel.predict_register("lr_weighted")
-def lr_weighted_predict(self, embedding_model: str) -> tuple[DataFrame, DataFrame]:
+@AnalyticsModel.train_register("lr_improved")
+def lr_improved_train(self, embedding_model: str) -> None:
+    # `weight` is on the training split only. L2 penalty is separate from the sample weights.
+    train_df, _ = self._feature_transform(FEATURES)
+    self.lr_improved_model = LogisticRegression(
+        featuresCol="features",
+        labelCol="rating_p1",
+        weightCol="weight",
+        maxIter=100,
+        regParam=0.1,
+        elasticNetParam=0.0,
+    ).fit(train_df)
+    model_path = ANALYTIC_MODELS_DIR / f"lr_improved__{embedding_model}"
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    self.lr_improved_model.write().overwrite().save(str(model_path))
+
+
+@AnalyticsModel.predict_register("lr_improved")
+def lr_improved_predict(self, embedding_model: str) -> tuple[DataFrame, DataFrame]:
     train_df, test_df = self._feature_transform(FEATURES)
-    if getattr(self, "lr_weighted_model", None) is None:
-        self.lr_weighted_model = LogisticRegressionModel.load(str(ANALYTIC_MODELS_DIR / f"lr__{embedding_model}"))
+    if getattr(self, "lr_improved_model", None) is None:
+        self.lr_improved_model = LogisticRegressionModel.load(
+            str(ANALYTIC_MODELS_DIR / f"lr_improved__{embedding_model}")
+        )
     
     columns = ["uniqueID", "rating", "prediction"]
     return (
-        self.lr_weighted_model.transform(train_df).select(*columns),
-        self.lr_weighted_model.transform(test_df).select(*columns),
+        self.lr_improved_model.transform(train_df).select(*columns),
+        self.lr_improved_model.transform(test_df).select(*columns),
     )

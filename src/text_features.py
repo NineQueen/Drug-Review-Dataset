@@ -179,9 +179,9 @@ def text_feature_engineering(
         ).transform(df)
 
         df = df.withColumn(
-            "words_stem",
+            "words_featured",
             F.concat(
-                F.col("words_stem"),
+                F.col("words_featured"),
                 F.col("_bigrams"),
             )
         )

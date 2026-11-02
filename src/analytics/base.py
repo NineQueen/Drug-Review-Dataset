@@ -5,9 +5,12 @@ from pyspark.sql import DataFrame
 class AnalyticsModel:
     """Predictor trained on frames that already contain `embedding`.
 
-    `train(self, embedding_model)` fits on the training frame only and saves the model.
-    The saved directory is `{registry_key}__{embedding_model}`.
-    `predict(self, embedding_model)` loads that model and returns `(train_df, test_df)`.
+    Give the fitted classifier one attribute on this instance, such as `self.lr_model`.
+    `train(self, embedding_model)` fits on the training frame only, assigns that attribute,
+    and saves the model under `{registry_key}__{embedding_model}`.
+    `predict(self, embedding_model)` uses the attribute when it is already set. When the
+    attribute is missing or None, it loads that directory and assigns the attribute.
+    One instance keeps one fitted object. A different embedding name needs another instance.
 
     Each returned frame has only `uniqueID`, `rating`, and `prediction`.
     `rating` stays on the original 1-10 scale. `prediction` uses the same 0-9 classes as `rating_p1`.
