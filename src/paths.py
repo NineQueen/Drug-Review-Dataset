@@ -3,8 +3,10 @@ from pathlib import Path
 # Resolved from this file, independent of the notebook working directory.
 ROOT = Path(__file__).resolve().parents[1]
 TRAIN_PARQUET = "train.parquet"
+VALID_PARQUET = "valid.parquet"
 TEST_PARQUET = "test.parquet"
 TRAIN_PREDICTION_PARQUET = "train_predictions.parquet"
+VALID_PREDICTION_PARQUET = "valid_predictions.parquet"
 TEST_PREDICTION_PARQUET = "test_predictions.parquet"
 
 RAW_CSV = ROOT / "data" / "raw" / "drugsComTrain_raw.csv"

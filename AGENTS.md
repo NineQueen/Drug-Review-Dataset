@@ -4,10 +4,10 @@ Read this file before editing. It applies to the whole repository. The user's cu
 
 ## Goal and ownership
 
-Predict the original drug-review `rating` as ten classes, 1–10, with PySpark. The required baseline is unweighted `lr` with `tfidf`; preserve both registry keys. N is the number of group members: advanced modelling needs N distinct non-LR classifiers paired with separate non-TF-IDF embeddings. TF-IDF is not a word embedding, and neither LR nor weighted LR counts toward N. Do not use one model as both the embedding and classifier. Advanced modelling and final report assembly are separate tasks.
+Predict the original drug-review `rating` as ten classes, 1–10, with PySpark. The required baseline is unweighted logistic regression with `tfidf`. The unweighted classifier is registered with `baseline_register` and called as `baseline()`. Other classifiers use `register` and a unique key, such as `lr_improved`. N is the number of group members: advanced modelling needs N distinct non-LR classifiers paired with separate non-TF-IDF embeddings. TF-IDF is not a word embedding, and neither LR nor weighted LR counts toward N. Do not use one model as both the embedding and classifier. Advanced modelling and final report assembly are separate tasks.
 
-- **Embedding owner:** implement only the assigned `src/embeddings/<name>.py`. Read the encoded split through the existing runner, fit the representation, save its own model, and return train/test frames containing `embedding`.
-- **Analytics owner:** implement only the assigned `src/analytics/<name>.py`. Consume embedding frames, choose and assemble its own features, fit its classifier, save its own model, and return train/test predictions.
+- **Embedding owner:** implement only the assigned `src/embeddings/<name>.py`. Read the encoded split through the existing runner, fit the representation, save its own model, and return train, validation, and test frames containing `embedding`.
+- **Analytics owner:** implement only the assigned `src/analytics/<name>.py`. Consume embedding frames, choose and assemble its own features, and fit the classifier and return train, validation, and test predictions from one registered function.
 - **Integration owner:** maintain preprocessing, splitting, encoding, base classes, registration discovery, I/O, evaluation, shared notebooks, dependencies, and documentation. Assemble final deliverables.
 
 A model assignment does not authorize editing another model, `base.py`, `__init__.py`, `src/paths.py`, preprocessing, evaluation, or the main notebook. Implement helper functions and model-specific transforms in the assigned model file. If a shared change or new dependency is necessary, report the concrete need to the integration owner instead of silently expanding the task. An explicit user request to maintain shared code or documentation overrides these default boundaries.
@@ -20,55 +20,49 @@ Add one model module directly under its assigned folder. Import the base class f
 
 Importing either package discovers sibling modules automatically. Do not edit `__init__.py` or discovery loops. Keep module import free of training, downloads, file writes, and Spark-session creation. Put optional model-specific imports inside the functions that need them so another model can still be imported without that dependency.
 
-Use a unique lowercase registry key. A single underscore is allowed; `__`, path separators, and duplicate keys are not. Register both train and predict with the same key. Use distinct function names such as `<name>_train` and `<name>_predict`.
+Use a unique lowercase registry key. A single underscore is allowed; `__`, path separators, and duplicate keys are not. An embedding registers train and predict with the same key and distinct function names such as `<name>_train` and `<name>_predict`. An analytics model registers one function. The runner calls `AnalyticsModel.registry[key](instance)`. The required unweighted baseline uses `baseline_register` and is called as `instance.baseline()`.
 
-Store the fitted object on one instance attribute named for that model, such as `self.tfidf_model` or `self.lr_model`. Train assigns the attribute and writes the directory. Predict uses the attribute when it is already set; when it is missing or `None`, predict loads that directory with `getattr(self, "tfidf_model", None)`. One instance holds one fitted object, so a second save name needs another instance. Two classifiers on the same instance need two attribute names.
+An embedding `train` fits on the training split and saves the model directory. `predict` loads that directory and transforms the training, validation, and test frames. An embedding directory name is the `model_name` argument. An analytics function fits on the training frame and returns the three prediction frames in the same call. Its combined result name is `{registry_key}__{self.embedding_model}`; that embedding name is fixed when the instance is constructed.
 
 ```python
-# Embedding module: self.train and self.test are Spark DataFrames.
+# Embedding module: self.train, self.valid, and self.test are Spark DataFrames.
 @EmbeddingModel.train_register("my_embedding")
 def my_embedding_train(self, model_name: str = "my_embedding") -> None:
-    self.my_embedding_model = ...  # fit, then save EMBEDDING_MODELS_DIR / model_name
+    model = ...  # fit on self.train, then save EMBEDDING_MODELS_DIR / model_name
 
 @EmbeddingModel.predict_register("my_embedding")
-def my_embedding_predict(self, model_name: str = "my_embedding") -> tuple[DataFrame, DataFrame]:
-    if getattr(self, "my_embedding_model", None) is None:
-        self.my_embedding_model = ...  # load model_name
-    ...  # Return train, then test.
+def my_embedding_predict(self, model_name: str = "my_embedding") -> tuple[DataFrame, DataFrame, DataFrame]:
+    model = ...  # load model_name
+    ...  # Return train, then validation, then test.
 
-# Analytics module: embedding_model is the embedding name, a string.
-@AnalyticsModel.train_register("my_classifier")
-def my_classifier_train(self, embedding_model: str) -> None:
-    self.my_classifier_model = ...  # fit, then save my_classifier__{embedding_model}
-
-@AnalyticsModel.predict_register("my_classifier")
-def my_classifier_predict(self, embedding_model: str) -> tuple[DataFrame, DataFrame]:
-    if getattr(self, "my_classifier_model", None) is None:
-        self.my_classifier_model = ...  # load that directory
-    ...  # Return train predictions, then test predictions.
+# Analytics module: self.embedding_model is the embedding name, a string.
+@AnalyticsModel.register("my_classifier")
+def my_classifier(self) -> tuple[DataFrame, DataFrame, DataFrame]:
+    model = ...  # fit on the training frame
+    ...  # Return train, validation, then test predictions.
 ```
 
-These are interface sketches; implement the algorithm before running them. The registry stores an unbound function: the runner calls `registry[key](instance, ...)`. Keep train and predict separate. The integration runner trains all selected entries before calling their predict entries; do not special-case your model in its loops.
+These are interface sketches; implement the algorithm before running them. Each registry stores an unbound function: the runner calls `registry[key](instance, ...)`. Keep an embedding's train and predict separate. Do not split an analytics model into train and predict. The integration runner trains selected embeddings before calling their predict entries, then calls each selected analytics function once. Do not special-case your model in its loops.
 
 ## Data contract
 
-- Fit vocabulary, IDF, encoders, scalers, reducers, and classifiers on training data only. Do not tune on the test split. A pretrained embedding may be loaded, but any dataset-specific fitting uses training rows only.
-- Preserve `uniqueID`, rows, and original labels. Embeddings keep all existing columns and add the Spark ML `VectorUDT` column `embedding`, with the same dimension for every train/test row. Do not return a Python list or Spark array in place of the vector.
-- Inputs retain `review`, `words`, and `words_stem`. TF-IDF uses `words_stem`; a model may instead use `review` or unstemmed `words` without changing shared text processing.
-- Keep the preprocessing boundary fixed: `data_cleaning` retains the original record filtering, configured condition/HTML replacements, outer-quote trimming, ordinary-whitespace cleanup, lowercasing, deterministic review deduplication, and numeric derived columns. Additional shared text repairs belong to `text_feature_engineering` and must update `review` with the repaired full text. As further character, whitespace, contraction, or dose-format repairs are implemented, apply them before creating the temporary `review_clean` copy for token preparation. That copy is for token-specific processing, which must not overwrite the repaired `review`. The current repair implementation contains only the migrated character/whitespace function; the remaining repairs are pending in `docs/todo.md`. Return `review`, `words`, and `words_stem`, without adding a permanent text column. The text stage preserves rows, IDs, and labels and does not deduplicate again. Audit normalization collisions separately before model comparison.
+- Fit vocabulary, IDF, encoders, scalers, reducers, and classifiers on training data only. Use the validation split to check a fitted model. Do not fit on the validation or test split, and do not select a model from the test split. A pretrained embedding may be loaded, but any dataset-specific fitting uses training rows only.
+- Preserve `uniqueID`, rows, and original labels. Embeddings keep all existing columns and add the Spark ML `VectorUDT` column `embedding`, with the same dimension for every train, validation, and test row. Do not return a Python list or Spark array in place of the vector.
+- Inputs retain `review`, `words`, and `words_featured`. TF-IDF uses `words_featured`; a model may instead use `review` or unstemmed `words` without changing shared text processing.
+- Keep the preprocessing boundary fixed: `data_cleaning` retains the original record filtering, configured condition/HTML replacements, outer-quote trimming, ordinary-whitespace cleanup, lowercasing, deterministic review deduplication, and numeric derived columns. Additional shared text repairs belong to `text_feature_engineering` and must update `review` with the repaired full text. As further character, whitespace, contraction, or dose-format repairs are implemented, apply them before creating the temporary `review_clean` copy for token preparation. That copy is for token-specific processing, which must not overwrite the repaired `review`. The current repair implementation contains only the migrated character/whitespace function; the remaining repairs are pending in `docs/todo.md`. Return `review`, `words`, and `words_featured`, without adding a permanent text column. The text stage preserves rows, IDs, and labels and does not deduplicate again. Audit normalization collisions separately before model comparison.
 - New text repairs must address broadly applicable patterns. Do not build dataset-specific typo dictionaries, add per-review exceptions, or require exhaustive manual correction of the dataset. Preserve ambiguous expressions rather than guessing; aggregate checks and representative examples validate the supported rules.
 - Classifiers train on `rating_p1 = rating - 1`, range 0–9. Return `prediction` as an integer-valued double in that range, not probabilities or original 1–10 ratings. Only `Scorer` adds 1. Analytics outputs contain exactly `uniqueID`, `rating`, `prediction`.
-- Analytics receives `self.train_embedding` and `self.test_embedding`. `self._feature_transform(features)` returns train/test frames with an assembled `features` column; it does not mutate the stored inputs. Use the same feature list in train and predict. Do not use `rating`, `rating_p1`, or `weight` as input features.
+- Analytics receives `self.train_embedding`, `self.valid_embedding`, and `self.test_embedding`. `self._feature_transform(features)` returns training, validation, and test frames with an assembled `features` column; it does not mutate the stored inputs. Use that same feature list for the fit and the returned predictions. Do not use `rating`, `rating_p1`, or `weight` as input features.
 - `condition_vec` is one-hot; `drug_mean_rating` is the smoothed training mean encoding of the drug. `drugName_idx` remains an auxiliary categorical index, not an ordinal numeric feature. The existing encoder uses `targetType="continuous"`, `smoothing=10.0`, and keeps unseen values. Do not change this shared encoding as part of a model assignment.
-- `days` is days since 1970-01-01. `usefulCount_log` is `log1p(usefulCount)`, where useful votes accumulate after review publication. The training-only `weight` is `n / (k * class_count)`; pass it as a model weight when appropriate, never require it on test rows.
-- Splitting uses `xxhash64(uniqueID, SEED)` buckets, approximately 80/20. With the same data, ID types, Spark version, and seed, membership is independent of row order and partitioning. Keep this shared policy; do not replace it with `randomSplit`.
+- `days` is days since 1970-01-01. `usefulCount_log` is `log1p(usefulCount)`, where useful votes accumulate after review publication. The training-only `weight` is `n / (k * class_count)`; pass it as a model weight when appropriate, and do not require it on validation or test rows.
+- Splitting uses `pmod(xxhash64(uniqueID, SEED), 10000)`. Buckets below 7000 are train, 7000–7999 are validation, and 8000 and above are test, approximately 70/10/20. Train is for fitting, validation is for checking the fitted model, and test is for the final score. With the same data, ID types, Spark version, and seed, membership is independent of row order and partitioning. Keep this shared policy; do not replace it with `randomSplit`.
 
 ## Artifacts and evaluation
 
 - Raw CSV: `data/raw/drugsComTrain_raw.csv`.
-- Encoded split: `data/processed/split/{train,test}.parquet`.
-- Embedding frames: `data/processed/embeddings/<embedding>/{train,test}.parquet`.
-- Prediction frames: `data/processed/predictions/<analytics>__<embedding>/{train_predictions,test_predictions}.parquet`.
+- Encoded split: `data/processed/split/{train,valid,test}.parquet`.
+- Embedding frames: `data/processed/embeddings/<embedding>/{train,valid,test}.parquet`.
+- Prediction frames: `data/processed/predictions/<analytics>__<embedding>/{train_predictions,valid_predictions,test_predictions}.parquet`.
 - Fitted representation: `src/embeddings/models/<embedding>/`.
 - Fitted classifier: `src/analytics/models/<analytics>__<embedding>/`.
 
@@ -80,7 +74,7 @@ Combined names use `analytics__embedding` in that order. Keep public column name
 
 The entry notebook creates one active SparkSession before constructing `DataOI`. Use the existing `local[*]` / 4g setup. Do not start a session in a model module or in `DataOI`. Restart the kernel after changing driver memory or after the JVM exits.
 
-`project.ipynb` is the integration runner. Personal runners are `experiments/embedding_pipeline.ipynb` and `experiments/analytics_pipeline.ipynb`; select `embedding_name = "tfidf"` in the embedding runner to check the baseline representation. Choose the assigned registry key in the runner. Personal scoring uses only that run's `test_pred_dict`; the main runner may aggregate saved results.
+`project.ipynb` is the integration runner. Personal runners are `experiments/embedding_pipeline.ipynb` and `experiments/analytics_pipeline.ipynb`; select `embedding_name = "tfidf"` in the embedding runner to check the baseline representation. Choose the assigned registry key in the runner. Personal runners score that run's train, validation, and test predictions; the reported comparison uses the test predictions. The main runner may aggregate saved results.
 
 `REBUILD` controls input preparation, not whether a model trains. On a fresh checkout, generated caches are absent: rebuild inputs once. Changes to cleaning, text features, `replacement.json`, split/seed, or shared encoding require rebuilding the split and downstream artifacts. Changes to an embedding require regenerating its frames and downstream classifiers. Existing files never update merely because code changed. Coordinate shared-data changes with the integration owner; do not independently change the dataset for one model comparison.
 
@@ -90,6 +84,6 @@ Use `.cache()` for reused frames. Preserve the current cache policy: do not intr
 
 ## Verification and handoff
 
-Parse the edited Python and notebook cells, import the package to check registration, and run the assigned train/predict path on a small sample when dependencies permit. Check matching train/predict keys, vector dimension, preserved sample IDs, and the three prediction columns. Report what ran, the model/embedding pair, input version or seed, dependencies, and limitations. Do not report unrun experiments as completed.
+Parse the edited Python and notebook cells, import the package to check registration, and run the assigned path on a small sample when dependencies permit. For an embedding, check that train and predict share a key. For an analytics model, check that its single registry key is callable once. Check vector dimension, preserved sample IDs, and the three prediction columns. Report what ran, the model/embedding pair, input version or seed, dependencies, and limitations. Do not report unrun experiments as completed.
 
 Source data and fitted models are intended to be versioned; the current directory migration must include them when committed. Generated `data/processed/` frames stay out of Git. Do not commit, push, or change Git config unless the user asks. Clear notebook outputs before committing. Keep English comments brief and factual, preserve public interfaces, and use snake_case for new local variables. Do not expand a text/comment cleanup into a modelling change.

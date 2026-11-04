@@ -1,10 +1,12 @@
+from functools import cache
 from pyspark.ml import Pipeline
 from pyspark.ml.feature import OneHotEncoder, StringIndexer, TargetEncoder
 from pyspark.sql import DataFrame
+from pyspark.sql.functions import transform
 
 
-def encoder(df_train: DataFrame, df_test: DataFrame) -> tuple[DataFrame, DataFrame]:
-    # Fit on the training split only. An unseen test value is kept rather than rejected.
+def encoder(df_train: DataFrame,df_valid:DataFrame, df_test: DataFrame) -> tuple[DataFrame, DataFrame, DataFrame]:
+    # Fit on the training split only. An unseen validation or test value is kept rather than rejected.
     condition_idx = StringIndexer(
         inputCol="condition",
         outputCol="condition_idx",
@@ -31,4 +33,8 @@ def encoder(df_train: DataFrame, df_test: DataFrame) -> tuple[DataFrame, DataFra
     )
     pipeline = Pipeline(stages=[condition_idx, condition_vec, drugName_idx, drug_mean])
     encoder_model = pipeline.fit(df_train)
-    return encoder_model.transform(df_train).cache(), encoder_model.transform(df_test).cache()
+    return (
+        encoder_model.transform(df_train).cache(), 
+        encoder_model.transform(df_valid).cache(),
+        encoder_model.transform(df_test).cache()
+    )

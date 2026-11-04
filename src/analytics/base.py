@@ -5,53 +5,61 @@ from pyspark.sql import DataFrame
 class AnalyticsModel:
     """Predictor trained on frames that already contain `embedding`.
 
-    Give the fitted classifier one attribute on this instance, such as `self.lr_model`.
-    `train(self, embedding_model)` fits on the training frame only, assigns that attribute,
-    and saves the model under `{registry_key}__{embedding_model}`.
-    `predict(self, embedding_model)` uses the attribute when it is already set. When the
-    attribute is missing or None, it loads that directory and assigns the attribute.
-    One instance keeps one fitted object. A different embedding name needs another instance.
+    The constructor stores the embedding name and three frames:
+    `self.train_embedding`, `self.valid_embedding`, and `self.test_embedding`.
+    One registered function fits on the training frame and returns train,
+    validation, and test predictions, in that order. One instance is tied to
+    one embedding name.
+
+    `register` stores that function in `registry`. The runner calls
+    `registry[key](instance)`. The required baseline uses `baseline_register`
+    and is called as `instance.baseline()`. The registry key must not contain `__`.
 
     Each returned frame has only `uniqueID`, `rating`, and `prediction`.
     `rating` stays on the original 1-10 scale. `prediction` uses the same 0-9 classes as `rating_p1`.
     Leave the prediction on that scale; `Scorer` builds `rating_pred = prediction + 1`.
 
     A model that needs one feature vector calls `_feature_transform` with its own column list.
+    That call returns the training, validation, and test frames.
     `weight`, when a model uses it, exists only on the training split.
-    The train and predict functions share one registry key, and that key must not contain `__`.
+    The validation split checks the fitted model. The test split is reserved for final evaluation.
     """
 
-    train_registry = {}
-    predict_registry = {}
+    registry = {}   
+    baseline = None
 
-    def __init__(self, df_train: DataFrame, df_test: DataFrame) -> None:
+    def __init__(self,embedding_model:str, df_train: DataFrame,df_valid:DataFrame, df_test: DataFrame) -> None:
+        self.embedding_model = embedding_model
         self.train_embedding = df_train
+        self.valid_embedding = df_valid
         self.test_embedding = df_test
 
-    def _feature_transform(self, features: list[str]) -> tuple[DataFrame, DataFrame]:
-        """Assemble `features` from the columns this model declares.
+    def _feature_transform(self, features: list[str]) -> tuple[DataFrame,DataFrame, DataFrame]:
+        """Assemble `features` on the training, validation, and test frames.
 
-        Call at the start of train and predict. The column list is not fixed here.
+        Call from the registered function. The column list is not fixed here.
         """
         assembler = VectorAssembler(inputCols=features, outputCol="features")
         train_df = assembler.transform(self.train_embedding).cache()
+        valid_df = assembler.transform(self.valid_embedding).cache()
         test_df = assembler.transform(self.test_embedding).cache()
-        return train_df, test_df
+        return train_df, valid_df, test_df
 
     @classmethod
-    def train_register(cls, name: str):
+    def register(cls, name: str):
         def decorator(function):
-            # `name` is the registry key. The notebook calls `function(instance, embedding_name)`.
+            # `name` is the registry key. The notebook calls `function(instance)`.
             setattr(cls, function.__name__, function)
-            cls.train_registry[name] = function
+            cls.registry[name] = function
             return function
         return decorator
-
+    
     @classmethod
-    def predict_register(cls, name: str):
+    def baseline_register(cls):
         def decorator(function):
+            # The notebook calls `instance.baseline()`.
             setattr(cls, function.__name__, function)
-            cls.predict_registry[name] = function
+            cls.baseline = function
             return function
         return decorator
 
