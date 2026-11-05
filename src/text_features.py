@@ -111,7 +111,7 @@ def text_feature_engineering(
 
     # Keep negative words when removing stop words
     protected_words = {
-        "not", "no", "nor", "never", "neither", "without"
+        "not", "no", "nor", "never", "neither", "without", "cannot"
     }
     custom_stop_words = [
         word
