@@ -23,15 +23,7 @@ def encoder(df_train: DataFrame,df_valid:DataFrame, df_test: DataFrame) -> tuple
         handleInvalid="keep",
     )
     # Use the smoothed mean `rating` as a feature; keep `drugName_idx` as an auxiliary key.
-    drug_mean = TargetEncoder(
-        inputCol="drugName_idx",
-        outputCol="drug_mean_rating",
-        labelCol="rating",
-        targetType="continuous",
-        handleInvalid="keep",
-        smoothing=10.0,
-    )
-    pipeline = Pipeline(stages=[condition_idx, condition_vec, drugName_idx, drug_mean])
+    pipeline = Pipeline(stages=[condition_idx, condition_vec, drugName_idx])
     encoder_model = pipeline.fit(df_train)
     return (
         encoder_model.transform(df_train).cache(), 

@@ -2,8 +2,22 @@ import json
 
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
+from pyspark.sql.column import Column
 
 from src.paths import REPLACEMENT_JSON
+
+
+
+def _peel_end_pair(column: Column, marker: str) -> Column:
+    """Remove one copy of `marker` when it is present at both ends."""
+    width = len(marker)
+    interior = F.trim(F.substring(column, width + 1, F.length(column) - (2 * width)))
+    matched = (
+        F.startswith(column, F.lit(marker))
+        & F.endswith(column, F.lit(marker))
+        & (F.length(column) >= 2 * width)
+    )
+    return F.when(matched, interior).otherwise(column)
 
 
 def data_cleaning(df: DataFrame) -> DataFrame:
@@ -21,10 +35,20 @@ def data_cleaning(df: DataFrame) -> DataFrame:
             F.coalesce(condition_map[F.col("condition")], F.col("condition")),
         )
 
-        review = F.col("review")
+        review = F.trim(F.regexp_replace(F.column("review"), r"\s+", " "))
+
+        # AI change: decide wrappers at quote replacement, instead of `^"|"$`.
+        # That pattern deleted a quote on either end, so a second pass removed
+        # body quotes such as the closing quote of "side-effect" and changed dedup.
+        # One "..." pair is the content wrapper on every parsed review. `&quot;`
+        # on both ends is a second wrapper; an entity on only one end is a citation
+        # and is decoded by the map below.
+        review = _peel_end_pair(review, '"')
+        review = _peel_end_pair(review, "&quot;")
         # JSON order matters: `&amp;` is last, so other entities are decoded first.
         for old, new in replacement["html_entities"].items():
             review = F.regexp_replace(review, old, new)
+        review = F.trim(F.regexp_replace(review, r"\s+", " "))
         return df.withColumn("review", review)
 
     print("="*32)
@@ -47,11 +71,6 @@ def data_cleaning(df: DataFrame) -> DataFrame:
     remaining_conditions = df.filter(F.col("condition").isin(list(replacement["condition"]))).count()
     remaining_entities = df.filter(F.col("review").rlike("&(#x?[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);")).count()
     print(f"After replacement: {remaining_conditions} `condition` values still match configured repairs, {remaining_entities} `review` values contain HTML entities")
-
-    df = df.withColumn(
-        "review",
-        F.regexp_replace(F.trim(F.regexp_replace("review", r'^"|"$', "")), r"\s+", " "),
-    )
 
     # `dropDuplicates` does not define which copy survives. Keep the greater `usefulCount`, then the greater `uniqueID`.
     row_count = df.count()

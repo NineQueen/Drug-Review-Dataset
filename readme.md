@@ -6,7 +6,6 @@
 
 - 人和 AI 的文件职责边界：[AGENTS.md](AGENTS.md)。AI 开始任务前先读这一份。
 - 模型接入、列类型、注册和输出约定：[docs/interface.md](docs/interface.md)。
-- 预处理负责人的剩余任务：[docs/todo.md](docs/todo.md)。模型负责人不必顺手完成此清单。
 
 ## 环境与数据
 
@@ -45,11 +44,11 @@ embedding 和 analytics 都接收 train、validation、test。只在 train 上�
 
 ## 数据清洗与文本特征的边界
 
-`data_cleaning()` 保留原有流程：整行删除缺失 `condition` 或该字段混入网页提示的记录，执行现有 condition / HTML 替换、外层引号与普通空白处理、小写化和确定性 review 去重，并生成 `days`、`usefulCount_log`、`rating_p1`。
+`data_cleaning()` 保留整行过滤、已配置的 condition / HTML 替换、成对的外层包装引号移除、普通空白合并、小写化和确定性 review 去重，并生成 `days`、`usefulCount_log`、`rating_p1`。包装引号只在两端同时存在时去掉一对：先是解析后的 `"`，再是两端都有的 `&quot;`。只有一侧有引号时保留。普通空白在识别包装前、以及 HTML 解码后再各合并一次。
 
-原 TODO 1（旧 A2）起的字符与 Unicode 空白规范化，以及后续缩写、剂量、分词、停用词和词干处理，统一归入 `text_feature_engineering()`。设计上，字符、空白、缩写和剂量格式等通用文本修复均应更新 `review`，使读取完整评论的模型共享修复结果。所有已实现的通用修复完成后，再从 `review` 建立临时 `review_clean`，准备 token 并生成 `words`、`words_featured`；token 专用的标点取舍等处理不覆盖完整评论。对外仍返回既有列，不永久保留 `review_clean`，不删行、不改变 ID 或评分，也不二次去重；原始 CSV 文件保持原样。
+`text_feature_engineering()` 把字符与 Unicode 空白规范化、缩写展开和剂量空格写回 `review`，再复制临时列 `review_clean` 做分词。停用词步骤保留否定词，词干写入 `words_featured`；主 notebook 调用时打开 bigrams。token 处理不覆盖 `review`。函数返回既有列，不保留 `review_clean`，不删行、不改 ID 或评分，也不二次去重。`baseline_text_feature_engineering()` 只把 `review` 交给 Tokenizer，供单独的 baseline TF-IDF 路径使用。
 
-当前只完成既有 `normalize_review_text()` 及统计的迁移，并将该函数的结果写回 `review`；原有剂量合并与分词准备仍在临时列上执行。完整修复尚未完成，其余任务见 `docs/todo.md`。后续通用修复也应写回 `review` 并放在临时列创建之前，修复范围不固定于当前函数的已有规则。后续只新增处理普遍模式的规则，不建立数据集专属错拼表，也不要求逐条修复全部评论。规范化发生在原有去重之后，可能使不同记录得到相同规范文本或 token；比较模型前应单独统计这种碰撞，不自动合并记录或改动划分。
+后续若再增加通用文本修复，仍应先写回 `review`，再建立临时 token 列。只处理普遍模式，不建立数据集专属错拼表，也不逐条手工改正全部评论。这些修复发生在清洗去重之后，可能使不同记录得到相同文本或 token；比较模型前应单独统计这种碰撞，不自动合并记录或改动划分。
 
 ## 首跑与缓存运行
 

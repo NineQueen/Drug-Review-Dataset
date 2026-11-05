@@ -15,7 +15,7 @@ class EDA:
         print("="*32)
 
         # Raw reviews can contain HTML entities such as `&#039;`.
-        df.show(5,truncate=80)
+        df.show(5,truncate = 80)
         print("Schema:")
         df.printSchema()
 
@@ -38,7 +38,7 @@ class EDA:
         print(df.select("condition").distinct().count())
         print("`uniqueID` is unique" if df.count() == df.select("uniqueID").distinct().count()
             else  "`uniqueID` is not unique")
-
+        
         df_review = df.groupBy("review").agg(
                         F.count("*").alias("n"),
                         F.count_distinct("rating").alias("rating_n"),
@@ -54,6 +54,9 @@ class EDA:
                     df_review.filter(F.col("rating_n") > 1).count()
                 )
             )
+        
+        for col in df.columns:
+            print(f"`{col}` has {df.filter(F.col(col).isNull()).count()} null records")
 
     def distribution_inspect(self) -> None:
         df = self.df
@@ -109,8 +112,6 @@ class EDA:
         length_ax = df_length.select("review_length").toPandas().plot.hist(bins=40, range=(0, 1500), legend=False)
         length_ax.set_xlabel("review_length")
 
-        for col in df.columns:
-            print(f"`{col}` has {df.filter(F.col(col).isNull()).count()} null records")
 
     def correlation(self) -> None:
         df = self.df
