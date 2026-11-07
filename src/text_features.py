@@ -192,12 +192,13 @@ def text_feature_engineering(
             "uniqueID",
             "drugName",
             "condition",
-            "words_featured",
             "days",
             "usefulCount_log",
             "rating",
             "rating_p1",
             "review",
             "words",
+            "words_nostop",
+            "words_featured"
         )
     )
