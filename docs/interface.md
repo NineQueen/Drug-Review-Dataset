@@ -32,10 +32,10 @@ embedding 上的三份表是 `self.train`、`self.valid`、`self.test`。它们�
 - `days`：整数，距 1970-01-01 的天数；`usefulCount_log`：double，`log1p(usefulCount)`。投票是在评论发表后累积的，解释模型应用场景时需说明输入条件。
 - `rating`：原始整数评分 1–10，仅作真值；`rating_p1`：整数分类标签 0–9。
 - `condition_idx`、`condition_vec`：类别索引与 Spark ML one-hot 向量。模型可使用 `condition_vec`。
-- `drugName_idx`：训练集拟合的药物类别索引。当前不加权 baseline 和加权 `lr_improved` 把它和 `embedding`、`condition_vec`、`days`、`usefulCount_log` 一起组装进特征。当前 encoder 不生成 `drug_mean_rating`。
+- `drugName_grouped`、`drugName_idx`、`drugName_vec`：训练集中出现至少 10 次的药名保留，其余并入 `__other__`，再做索引和 one-hot。当前不加权 baseline 和加权 `lr_improved` 使用 `drugName_vec`，并与 `embedding`、`condition_vec`、`days`、`usefulCount_log` 一起组装进特征。当前 encoder 不生成 `drug_mean_rating`。
 - 训练集另有 double 列 `weight = n / (k * class_count)`。验证集和测试集没有这一列。它只能作为训练权重，不能作为输入特征。加权 LR 读取这一列；不加权 baseline 不读取。
 
-公共 encoder 只在训练集拟合，使用 `handleInvalid="keep"`。它拟合 `condition` 的 StringIndexer 与 one-hot，以及 `drugName` 的 StringIndexer，再变换 validation 和 test，使三份数据的类别索引和向量维数一致。调用形式是 `encoder(train, valid, test)`。修改这个公共编码后必须统一重建 split、embedding、分类器和预测；模型负责人不自行修改它。
+公共 encoder 只在训练集拟合，使用 `handleInvalid="keep"`。它拟合 `condition` 的 StringIndexer 与 one-hot，以及药名的低频合并、StringIndexer 与 one-hot，再变换 validation 和 test，使三份数据的类别索引和向量维数一致。调用形式是 `encoder(train, valid, test)`。修改这个公共编码后必须统一重建 split、embedding、分类器和预测；模型负责人不自行修改它。
 
 ## 3. 注册规则
 
@@ -119,7 +119,7 @@ def my_baseline(self) -> tuple[DataFrame, DataFrame, DataFrame]:
 - `data/processed/predictions/<analytics>__<embedding>/{train_predictions,valid_predictions,test_predictions}.parquet`：预测表。
 - `src/embeddings/models/<embedding>/` 与 `src/analytics/models/<analytics>__<embedding>/`：拟合产物。
 
-组合名按 `analytics__embedding` 排列，例如 `lr_improved__tfidf`。评分表保留既有列名 `Embedding_Model` 和 `Analytic_Model`，不要自行重命名。`Scorer` 创建 `rating_pred = prediction + 1`，再与 `rating` 比较。Accuracy 与 support-weighted Precision / Recall / F1 越大越好；MAE / RMSE 用原始评分单位，越小越好。相同组合重加时只替换该组合，其他组合保留。
+组合名按 `analytics__embedding` 排列，例如 `lr_improved__tfidf`。评分表保留既有列名 `Embedding_Model` 和 `Analytic_Model`，不要自行重命名。`Scorer` 创建 `rating_pred = prediction + 1`，再与 `rating` 比较。Accuracy 与 support-weighted Precision、F1 越大越好。support-weighted Recall 与 Accuracy 相同，不再单独列出。MAE / RMSE 用原始评分单位，越小越好。相同组合重加时只替换该组合，其他组合保留。
 
 `embedding_pipeline.ipynb` 只训练选中的 `embedding_name`，设为 `tfidf` 即可检查 baseline 表示的流程，再对 `AnalyticsModel.registry` 里的分类器各调用一次。`analytics_pipeline.ipynb` 只运行选中的 `analytics_name`，这个名字是 `register` 的注册名，使用本机已准备的所有 embedding。两个入口都按 train、valid、test 评分。验证分数用来检查模型，最终比较看测试分数。主 runner 做全量集成，不改成针对个人模型的特例。不加权 baseline 由 `baseline()` 调用，不在 `registry` 里。
 

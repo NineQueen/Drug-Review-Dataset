@@ -187,18 +187,4 @@ def text_feature_engineering(
         )
 
     # TF-IDF uses stems; other embeddings can use the retained `review` or unstemmed `words`.
-    return (
-        df.select(
-            "uniqueID",
-            "drugName",
-            "condition",
-            "days",
-            "usefulCount_log",
-            "rating",
-            "rating_p1",
-            "review",
-            "words",
-            "words_nostop",
-            "words_featured"
-        )
-    )
+    return df.drop("review_clean", "_ngram_words", "_bigrams")

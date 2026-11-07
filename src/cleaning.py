@@ -121,3 +121,22 @@ def data_cleaning(df: DataFrame) -> DataFrame:
         F.col("rating") - 1
     )
     return df
+
+
+def webmd_data_cleaning(df: DataFrame) -> DataFrame:
+    with open(REPLACEMENT_JSON, "r", encoding="utf-8") as f:
+        html_entities = json.load(f)["html_entities"]
+
+    review = F.col("review")
+    for old, new in html_entities.items():
+        review = F.regexp_replace(review, old, new)
+    review = F.lower(F.trim(F.regexp_replace(review, r"(?U)\s+", " ")))
+
+    row_count = df.count()
+    df = df.withColumn("review", review).filter(F.length("review") > 0)
+    cleaned_count = df.count()
+    print(
+        "After dropping empty WebMD `review` values\n"
+        f"Row count: {row_count} -> {cleaned_count}, removed {row_count - cleaned_count} rows"
+    )
+    return df
