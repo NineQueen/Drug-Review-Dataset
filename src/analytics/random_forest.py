@@ -9,10 +9,11 @@ from src.analytics.base import AnalyticsModel
 
 
 # Current TF-IDF baseline (test accuracy 0.360036); copy before overrides.
-# Unspecified parameters retain their PySpark defaults, including leaf size 1.
+# Unspecified parameters retain their PySpark defaults.
 RF_DEFAULT_PARAMS: dict[str, Any] = {
     "numTrees": 200,
     "maxDepth": 16,
+    "minInstancesPerNode": 1,
     "seed": 42,
 }
 
@@ -96,7 +97,8 @@ def random_forest(
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
     """Fit once on train and return train, validation, and test predictions.
 
-    Defaults use 200 trees, depth 16, condition/date/vote features and class weights.
+    Defaults use 200 trees, depth 16 and minimum leaf size 1,
+    with condition/date/vote features and class weights.
     A saved training-selected text subset is applied when available.
     The original depth-5 unweighted configuration predicted only rating 10.
     Use rf_params for tree regularization and balance_classes=False for an
