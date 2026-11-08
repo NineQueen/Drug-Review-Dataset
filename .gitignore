@@ -7,3 +7,5 @@ __pycache__/
 data/processed/*
 !data/processed/.gitkeep
 data/raw/webmd.csv
+
+/results/

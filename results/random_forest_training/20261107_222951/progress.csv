@@ -1,2 +1,0 @@
-﻿trial,change,fit_seconds,train_accuracy,train_f1,valid_accuracy,valid_f1,delta_previous_pp,delta_original_pp
-00_original,"Original: text only, depth 5, unweighted",81.44294679991435,0.3162982005141388,0.1520089469231296,0.31676684309679737,0.1524054670901746,0,0

@@ -1,7 +1,0 @@
-{
-  "target_accuracy": 0.36003600360036003,
-  "target_f1": 0.3356334719928079,
-  "checkpoint": "results/random_forest_training/20261107_223301/checkpoint_05_trees",
-  "code_restored_from": "HEAD:src/analytics/random_forest.py",
-  "glove_tuning_stopped": true
-}

@@ -1,1 +1,0 @@
-{"class":"org.apache.spark.ml.feature.VectorAssembler","timestamp":1794107216219,"sparkVersion":"4.2.0","uid":"VectorAssembler_7ea085cf5640","paramMap":{"inputCols":["embedding","condition_vec","days","usefulCount_log"],"outputCol":"features"},"defaultParamMap":{"handleInvalid":"error","outputCol":"VectorAssembler_42609867648f__output"}}
