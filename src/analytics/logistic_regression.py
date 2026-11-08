@@ -8,10 +8,12 @@ from src.paths import ANALYTIC_MODELS_DIR
 FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_vec"]
 
 tfidf_para = {
-    "regParam" : 0.1
+    "regParam" : 0.1,
+    "weightCol":"weight",
 }
 glove_para = {
-    "regParam" : 0.03
+    "regParam" : 0.3,
+    "weightCol":"weight",
 }
 
 para_list = {
@@ -39,7 +41,6 @@ def lr_improved(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
     lr_improved_model = LogisticRegression(
         featuresCol="features",
         labelCol="rating_p1",
-        weightCol="weight",
         maxIter=100,
         elasticNetParam=0.0,
         **para_list[self.embedding_model]

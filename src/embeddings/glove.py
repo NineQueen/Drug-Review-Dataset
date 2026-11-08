@@ -1,7 +1,8 @@
-from pyspark.sql import DataFrame, udf
+from pyspark.sql import DataFrame
 from src.embeddings.base import EmbeddingModel
 from pyspark.ml.linalg import VectorUDT, Vectors
 import numpy as np
+from gensim.models import KeyedVectors
 from pyspark.sql import functions as F
 from src.paths import EMBEDDING_MODELS_DIR
 
@@ -21,7 +22,6 @@ glove_para = {
 @EmbeddingModel.train_register("glove")
 def glove_train(self:EmbeddingModel, model_name:str = "glove") -> None:
     from glovpy import GloVe
-
     reviews = self.train_expanded.toPandas()["words_nostop"].tolist()
     model = GloVe(**glove_para)
     model.train(reviews)
@@ -32,8 +32,6 @@ def glove_train(self:EmbeddingModel, model_name:str = "glove") -> None:
 
 @EmbeddingModel.predict_register("glove")
 def glove_predict(self: EmbeddingModel, model_name:str = "glove") -> tuple[DataFrame, DataFrame, DataFrame]:
-    from gensim.models import KeyedVectors
-
     keyed = KeyedVectors.load(str(EMBEDDING_MODELS_DIR / model_name / "glove.kv"))
     token_vectors = {word:keyed.get_vector(word) for word in keyed.index_to_key}
     broadcast_vectors = self.train.sparkSession.sparkContext.broadcast(token_vectors)
@@ -41,18 +39,19 @@ def glove_predict(self: EmbeddingModel, model_name:str = "glove") -> tuple[DataF
 
     @F.udf(VectorUDT())
     def review_vector(tokens):
-        total = np.zeros(dimension,np.float64)
-        count = 0
         known = broadcast_vectors.value
-        for token in tokens or []:
-            vector = known.get(token)
-            if vector is not None:
-                total += vector
-                count += 1
-        
-        if count:
-            total = total / count
-        return Vectors.dense(total.tolist())
+        vectors = [known.get(token) for token in tokens or []]
+        if not vectors:
+            return Vectors.dense(np.zeros(dimension * 3, np.float64).tolist())
+        bounds = [round(i * len(vectors) / 3) for i in range(4)]
+        parts = []
+        for start, end in zip(bounds, bounds[1:]):
+            rows = [vector for vector in vectors[start:end] if vector is not None]
+            if rows:
+                parts.append(np.mean(rows, axis=0))
+            else:
+                parts.append(np.zeros(dimension, np.float64))
+        return Vectors.dense(np.concatenate(parts).tolist())
     
     def transform(df: DataFrame) -> DataFrame:
         return df.withColumn("embedding", review_vector(F.col("words_nostop")))
