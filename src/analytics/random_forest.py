@@ -13,6 +13,83 @@ from pyspark.sql import DataFrame
 from src.analytics.base import AnalyticsModel
 
 
+# Current TF-IDF baseline (test accuracy 0.360036); copy before overrides.
+# Unspecified parameters retain their PySpark defaults, including leaf size 1.
+RF_DEFAULT_PARAMS: dict[str, Any] = {
+    "numTrees": 200,
+    "maxDepth": 16,
+    "seed": 42,
+}
+
+# Suggested initial search bounds, not proven optima or full API limits.
+# "grid" gives discrete candidates; the other fields describe a Bayesian space.
+RF_PARAM_RANGES: dict[str, dict[str, Any]] = {
+    "numTrees": {
+        "type": "int", "low": 50, "high": 300, "step": 50,
+        "grid": [100, 200, 300], "note": "More trees increase training and inference cost.",
+    },
+    "maxDepth": {
+        "type": "int", "low": 4, "high": 16, "step": 2,
+        "grid": [8, 12, 16], "note": "Shallower trees impose stronger regularization.",
+    },
+    "minInstancesPerNode": {
+        "type": "int", "low": 1, "high": 30, "step": 1,
+        "grid": [1, 5, 20], "note": "Larger values restrict small leaves.",
+    },
+    "minInfoGain": {
+        "type": "float", "low": 0.0, "high": 0.02, "log": False,
+        "grid": [0.0, 0.001, 0.01], "note": "Higher minimum split gain restricts growth.",
+    },
+    "subsamplingRate": {
+        "type": "float", "low": 0.6, "high": 1.0, "log": False,
+        "grid": [0.6, 0.8, 1.0], "note": "Fraction of training rows sampled per tree.",
+    },
+    "featureSubsetStrategy": {
+        "type": "categorical", "choices": ["sqrt", "log2", "0.05", "0.1"],
+        "grid": ["sqrt", "log2", "0.05"],
+        "note": "Fractions must be strings. auto equals sqrt for multiclass forests with multiple trees.",
+    },
+    "maxBins": {
+        "type": "categorical", "choices": [16, 32, 64],
+        "grid": [16, 32, 64],
+        "note": "Must cover categorical feature cardinalities; larger values use more histogram memory.",
+    },
+    "impurity": {
+        "type": "categorical", "choices": ["gini", "entropy"],
+        "grid": ["gini", "entropy"], "note": "Split-quality criterion.",
+    },
+}
+
+# Small first grid: 2 * 3 * 3 = 18 fits, before any cross-validation multiplier.
+# Add other keys from RF_PARAM_RANGES only in a later, narrower search.
+RF_PARAM_GRID: dict[str, list[Any]] = {
+    name: list(RF_PARAM_RANGES[name]["grid"])
+    for name in ("numTrees", "maxDepth", "minInstancesPerNode")
+}
+
+# Library-neutral metadata: map int/float/categorical to the optimizer's sampler.
+RF_BAYES_SPACE: dict[str, dict[str, Any]] = {
+    name: {key: value for key, value in spec.items() if key not in {"grid", "note"}}
+    for name, spec in RF_PARAM_RANGES.items()
+}
+
+# Search resource settings are separate from RF_DEFAULT_PARAMS: the restored
+# baseline keeps its original defaults. maxMemoryInMB is not the JVM heap limit.
+RF_SEARCH_FIXED_PARAMS: dict[str, Any] = {"seed": 42, "maxMemoryInMB": 64}
+
+# These are analytics-function arguments, NOT RandomForestClassifier arguments.
+RF_RUN_PARAM_GRID: dict[str, list[bool]] = {"balance_classes": [False, True]}
+
+RF_SEARCH_NOTES: dict[str, str] = {
+    "memory": "Deep trees, large maxBins and large feature fractions can still exceed the 4 GB JVM heap; start with a narrow search.",
+    "evaluation": "Fit on train, select on validation (record accuracy and weighted F1), and evaluate test only after selection.",
+    "weights": "Pass balance_classes separately to the registered analytics function; do not pass it inside rf_params.",
+    "thresholds": "Prediction thresholds are post-fit settings, excluded from the constructor search space.",
+    "artifacts": "Record any active embedding-specific selection/calibration files so trials use comparable preprocessing and decision rules.",
+    "usage": "Pass rf_params={**RF_SEARCH_FIXED_PARAMS, **candidate} to the registered analytics function; do not modify RF_DEFAULT_PARAMS in place.",
+}
+
+
 @AnalyticsModel.register("random_forest")
 def random_forest(
     self: AnalyticsModel,
@@ -45,7 +122,7 @@ def random_forest(
     if invalid_features:
         raise ValueError(f"Columns cannot be used as features: {sorted(invalid_features)}")
 
-    parameters: dict[str, Any] = {"numTrees": 200, "maxDepth": 16, "seed": 42}
+    parameters: dict[str, Any] = dict(RF_DEFAULT_PARAMS)
     if rf_params is not None:
         parameters.update(rf_params)
     calibration_path = ANALYTIC_MODELS_DIR / f"random_forest__{self.embedding_model}_calibration.json"
@@ -248,9 +325,12 @@ def _run_training_experiments():
     os.environ.setdefault("SPARK_LOCAL_IP", "127.0.0.1")
     parser = argparse.ArgumentParser(description="Train RF and record each validation change")
     parser.add_argument("--resume", type=Path, help="Continue an existing experiment directory")
+    parser.add_argument("--tfidf-controls", action="store_true", help="Run matched regularization/class-weight controls")
     parser.add_argument("--tune-text", action="store_true", help="Compare training-importance text feature subsets")
     parser.add_argument("--calibrate", type=Path, help="Calibrate a completed experiment by validation accuracy")
     args = parser.parse_args()
+    if args.tfidf_controls:
+        return _tfidf_controls()
     if args.calibrate:
         return _calibrate_forest(args.calibrate)
     if args.tune_text:
@@ -625,6 +705,100 @@ def _calibrate_forest(experiment):
         _write_calibration_report(out)
         _publish_tuned_pipeline(out)
         print("FINAL",json.dumps(report),flush=True)
+    finally:
+        spark.stop()
+
+
+def _tfidf_controls():
+    import csv
+    import hashlib
+    import json
+    import os
+    import sys
+    import time
+    from pyspark.sql import SparkSession
+    from pyspark.ml.classification import RandomForestClassificationModel
+    from pyspark.ml.feature import VectorAssembler
+    from src.paths import ROOT, EMBEDDING_DIR
+
+    out=ROOT/'results/tfidf_rf_controls'/time.strftime('%Y%m%d_%H%M%S')
+    out.mkdir(parents=True)
+    os.environ.setdefault('PYSPARK_PYTHON',sys.executable)
+    os.environ.setdefault('SPARK_LOCAL_IP','127.0.0.1')
+    builder=(SparkSession.builder.master('local[*]').appName('TFIDFRFStrictControls')
+             .config('spark.driver.memory','4g').config('spark.default.parallelism','4')
+             .config('spark.sql.shuffle.partitions','8').config('spark.ui.showConsoleProgress','false'))
+    if os.name=='nt':
+        jar=_windows_local_io_jar(out/'local_io')
+        builder=(builder.config('spark.driver.extraClassPath',jar).config('spark.executor.extraClassPath',jar)
+                 .config('spark.hadoop.fs.file.impl','localio.WindowsLocalFileSystem'))
+    spark=builder.getOrCreate(); spark.sparkContext.setLogLevel('ERROR')
+    print('OUTPUT',str(out),flush=True)
+    try:
+        previous=ROOT/'results/random_forest_training/20261107_223301'
+        old=json.loads((previous/'summary.json').read_text(encoding='utf-8'))
+        for name,digest in old['input_files'].items():
+            assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==digest,name
+        def read(split):
+            return spark.read.parquet(*[str(p) for p in sorted((EMBEDDING_DIR/f'tfidf/{split}.parquet').glob('*.parquet'))])
+        assembler=VectorAssembler(inputCols=old['selected']['features'],outputCol='features')
+        train,valid=assembler.transform(read('train')).cache(),assembler.transform(read('valid')).cache()
+        common=dict(numTrees=100,seed=42,maxMemoryInMB=64,featureSubsetStrategy='auto',subsamplingRate=1.0)
+        specs=[('weak_unweighted',False,10,5),('weak_weighted',True,10,5),
+               ('strong_unweighted',False,8,20),('strong_weighted',True,8,20)]
+        protocol=dict(features=old['selected']['features'],seed=42,configs=specs,common=common,
+                      evaluation='All four configurations frozen before scoring any test rows',
+                      class_weights='n/(10*class_count) on train only; no resampling',
+                      weaker_regularization='maxDepth=10,minInstancesPerNode=5',
+                      stronger_regularization='maxDepth=8,minInstancesPerNode=20',
+                      default_model_unchanged=True)
+        (out/'protocol.json').write_text(json.dumps(protocol,indent=2),encoding='utf-8')
+        records=[]
+        for name,balanced,depth,leaf in specs:
+            params=dict(common,maxDepth=depth,minInstancesPerNode=leaf)
+            if balanced: params['weightCol']='weight'
+            print('START',name,json.dumps(params),flush=True)
+            started=time.perf_counter()
+            model=RandomForestClassifier(labelCol='rating_p1',**params).fit(train)
+            seconds=time.perf_counter()-started
+            record=dict(name=name,balanced=balanced,regularization='strong' if depth==8 else 'weak',
+                        parameters=params,fit_seconds=seconds,reused_checkpoint=False,
+                        train=_training_metrics(model.transform(train)),valid=_training_metrics(model.transform(valid)))
+            model.write().save(str(out/name))
+            records.append(record)
+            (out/'results.json').write_text(json.dumps(records,indent=2),encoding='utf-8')
+            print('COMPLETE',json.dumps(record),flush=True)
+        test=assembler.transform(read('test')).cache()
+        for record in records:
+            model=RandomForestClassificationModel.load(str(out/record['name']))
+            prediction=model.transform(test)
+            record['test']=_training_metrics(prediction)
+            prediction.select('uniqueID','rating','prediction').write.parquet(str(out/f'{record["name"]}_test_predictions.parquet'))
+        with (out/'metrics.csv').open('w',newline='',encoding='utf-8-sig') as stream:
+            writer=csv.writer(stream)
+            writer.writerow(['configuration','balanced','regularization','split','accuracy','weighted_precision','weighted_f1','mae','rmse','fit_seconds'])
+            for r in records:
+                for split in ['train','valid','test']:
+                    m=r[split]
+                    writer.writerow([r['name'],r['balanced'],r['regularization'],split,m['accuracy'],m['weighted_precision'],m['weighted_f1'],m['mae'],m['rmse'],r['fit_seconds']])
+        by_name={r['name']:r for r in records}
+        differences=[]
+        for before,after,effect in [('weak_unweighted','strong_unweighted','regularization_without_weights'),
+                                    ('weak_weighted','strong_weighted','regularization_with_weights'),
+                                    ('weak_unweighted','weak_weighted','weights_with_weak_regularization'),
+                                    ('strong_unweighted','strong_weighted','weights_with_strong_regularization')]:
+            for split in ['valid','test']:
+                row=dict(effect=effect,before=before,after=after,split=split)
+                for metric in ['accuracy','weighted_precision','weighted_f1','mae','rmse']:
+                    row[metric]=by_name[after][split][metric]-by_name[before][split][metric]
+                differences.append(row)
+        (out/'differences.json').write_text(json.dumps(differences,indent=2),encoding='utf-8')
+        (out/'results.json').write_text(json.dumps(records,indent=2),encoding='utf-8')
+        (out/'complete.json').write_text(json.dumps(dict(status='passed',inputs_sha256_verified=True,protocol=protocol),indent=2),encoding='utf-8')
+        print('STRICT_CONTROLS_COMPLETE',str(out),flush=True)
+    except Exception as exc:
+        (out/'failure.txt').write_text(repr(exc),encoding='utf-8')
+        raise
     finally:
         spark.stop()
 

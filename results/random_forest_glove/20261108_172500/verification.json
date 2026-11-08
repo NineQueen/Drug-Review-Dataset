@@ -1,0 +1,81 @@
+{
+  "status": "passed",
+  "operation": "Full registered GloVe RF training, checkpoint and prediction export",
+  "parameters": {
+    "numTrees": 100,
+    "maxDepth": 12,
+    "minInstancesPerNode": 5,
+    "maxMemoryInMB": 64,
+    "seed": 42,
+    "weightCol": "weight"
+  },
+  "metrics": {
+    "train": {
+      "accuracy": 0.7144473007712082,
+      "weighted_f1": 0.710368527133889,
+      "weighted_precision": 0.7197595045659793,
+      "weighted_recall": 0.7144473007712082,
+      "mae": 1.1325578406169665,
+      "rmse": 2.6119682027220104,
+      "prediction_counts": {
+        "1": 12536,
+        "2": 4014,
+        "3": 4624,
+        "4": 3478,
+        "5": 4600,
+        "6": 3422,
+        "7": 4791,
+        "8": 6906,
+        "9": 10446,
+        "10": 22983
+      }
+    },
+    "valid": {
+      "accuracy": 0.33820758948596036,
+      "weighted_f1": 0.31993437514137774,
+      "weighted_precision": 0.3127804533528019,
+      "weighted_recall": 0.33820758948596036,
+      "mae": 2.180407284471158,
+      "rmse": 3.396933693492839,
+      "prediction_counts": {
+        "1": 2254,
+        "2": 485,
+        "3": 606,
+        "4": 384,
+        "5": 444,
+        "6": 293,
+        "7": 507,
+        "8": 855,
+        "9": 1367,
+        "10": 3952
+      }
+    },
+    "test": {
+      "accuracy": 0.33676867686768674,
+      "weighted_f1": 0.31954028407338964,
+      "weighted_precision": 0.31254631364107527,
+      "weighted_recall": 0.33676867686768674,
+      "mae": 2.172862286228623,
+      "rmse": 3.3912910646991876,
+      "prediction_counts": {
+        "1": 4493,
+        "2": 848,
+        "3": 1163,
+        "4": 750,
+        "5": 965,
+        "6": 556,
+        "7": 1076,
+        "8": 1740,
+        "9": 2866,
+        "10": 7763
+      }
+    }
+  },
+  "splits": {
+    "train": 77800,
+    "valid": 11147,
+    "test": 22220
+  },
+  "elapsed_seconds": 314.2833920000121,
+  "independent_parquet_metrics_verified": true
+}

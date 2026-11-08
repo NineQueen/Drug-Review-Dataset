@@ -1,0 +1,47 @@
+{
+  "features": [
+    "embedding",
+    "condition_vec",
+    "days",
+    "usefulCount_log"
+  ],
+  "seed": 42,
+  "configs": [
+    [
+      "weak_unweighted",
+      false,
+      16,
+      1
+    ],
+    [
+      "weak_weighted",
+      true,
+      16,
+      1
+    ],
+    [
+      "strong_unweighted",
+      false,
+      10,
+      20
+    ],
+    [
+      "strong_weighted",
+      true,
+      10,
+      20
+    ]
+  ],
+  "common": {
+    "numTrees": 100,
+    "seed": 42,
+    "maxMemoryInMB": 256,
+    "featureSubsetStrategy": "auto",
+    "subsamplingRate": 1.0
+  },
+  "evaluation": "All four configurations frozen before scoring any test rows",
+  "class_weights": "n/(10*class_count) on train only; no resampling",
+  "weaker_regularization": "maxDepth=16,minInstancesPerNode=1",
+  "stronger_regularization": "maxDepth=10,minInstancesPerNode=20",
+  "default_model_unchanged": true
+}
