@@ -8,7 +8,6 @@ class Scorer:
     metric_names = [
         "accuracy",
         "weighted_precision",
-        "weighted_recall",
         "weighted_f1",
         "mae",
         "rmse",
@@ -38,7 +37,7 @@ class Scorer:
             self.add_model(embedding_name, analytics_name, df_pred)
 
     def _metrics(self, pred: DataFrame) -> dict[str, float]:
-        # Precision, recall, and F1 are weighted by class support. Lower MAE and RMSE are better.
+        # Precision and F1 are weighted by class support. Lower MAE and RMSE are better.
         classification = MulticlassClassificationEvaluator(
             labelCol="rating", predictionCol="rating_pred"
         )
@@ -49,9 +48,6 @@ class Scorer:
             "accuracy": classification.evaluate(pred, {classification.metricName: "accuracy"}),
             "weighted_precision": classification.evaluate(
                 pred, {classification.metricName: "weightedPrecision"}
-            ),
-            "weighted_recall": classification.evaluate(
-                pred, {classification.metricName: "weightedRecall"}
             ),
             "weighted_f1": classification.evaluate(pred, {classification.metricName: "f1"}),
             "mae": regression.evaluate(pred, {regression.metricName: "mae"}),
@@ -92,4 +88,7 @@ class Scorer:
         return self
 
     def show_metrics(self, **kwargs) -> None:
-        self.score.show(**kwargs)
+        displayed = self.score
+        for metric in self.metric_names:
+            displayed = displayed.withColumn(metric, F.format_string("%.8f", F.col(metric)))
+        displayed.show(**kwargs)

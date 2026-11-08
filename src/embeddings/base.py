@@ -1,5 +1,10 @@
 from pyspark.sql import DataFrame
-
+from src.dataOI import DataOI
+from src.cleaning import webmd_data_cleaning
+from src.text_features import text_feature_engineering
+from pyspark.sql import functions as F
+import contextlib
+import io
 
 class EmbeddingModel:
     """Text representation fitted on the training split.
@@ -18,10 +23,40 @@ class EmbeddingModel:
     train_registry = {}
     predict_registry = {}
 
-    def __init__(self, df_train: DataFrame,df_valid:DataFrame, df_test: DataFrame) -> None:
+    def __init__(
+        self, 
+        df_train: DataFrame,
+        df_valid:DataFrame,
+        df_test: DataFrame,
+        use_expanded_data:bool = True
+    ) -> None:
         self.train = df_train
         self.valid = df_valid
         self.test = df_test
+        if use_expanded_data: self.train_expanded = self._expand_webmd_data()
+
+    def _expand_webmd_data(self) -> DataFrame:
+        words_col = ["words","words_nostop","words_featured"]
+        data_oi = DataOI()
+        with contextlib.redirect_stdout(io.StringIO()):
+            reviews_webmd = text_feature_engineering(
+                webmd_data_cleaning(data_oi.load_webmd_data())
+            )
+        valid_test_reviews = (
+            self.valid.select("review")
+            .unionByName(self.test.select("review"))
+            .dropDuplicates(["review"])
+        )
+        reviews_webmd = (
+            reviews_webmd.join(valid_test_reviews, "review", "left_anti")
+            .filter(F.size("words_nostop") > 0)
+            .select(*words_col)
+        )
+        return (
+            self.train.select(*words_col)
+            .unionByName(reviews_webmd)
+            .dropDuplicates(["words_nostop"])
+        )
 
     @classmethod
     def train_register(cls, name: str):

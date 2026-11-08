@@ -10,6 +10,7 @@ VALID_PREDICTION_PARQUET = "valid_predictions.parquet"
 TEST_PREDICTION_PARQUET = "test_predictions.parquet"
 
 RAW_CSV = ROOT / "data" / "raw" / "drugsComTrain_raw.csv"
+WEBMD_CSV = ROOT / "data" / "raw" / "webmd.csv.gz"
 REPLACEMENT_JSON = ROOT / "replacement.json"
 
 METRICS_DIR = ROOT / "results" / "metrics"

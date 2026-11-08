@@ -32,6 +32,16 @@ class DataOI:
             locale = "en-US"
         )
         return df_raw
+    
+    def load_webmd_data(self) -> DataFrame:
+        df_raw = self.spark.read.csv(
+            str(paths.WEBMD_CSV),
+            inferSchema= True,
+            header=True,
+            multiLine=True,
+            escape='"'
+        )
+        return df_raw.select("Reviews").withColumnRenamed("Reviews","review")
 
     def _require_train_test(self, directory: Path, train_name: str,valid_name: str, test_name: str) -> None:
         train_path = directory / train_name
