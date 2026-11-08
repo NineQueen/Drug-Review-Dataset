@@ -9,3 +9,4 @@ data/processed/*
 data/raw/webmd.csv
 
 /results/
+/src/analytics/models/
