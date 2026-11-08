@@ -1,5 +1,4 @@
-from glovpy import GloVe
-from pyspark.sql import DataFrame, udf
+from pyspark.sql import DataFrame
 from src.embeddings.base import EmbeddingModel
 from pyspark.ml.linalg import VectorUDT, Vectors
 import numpy as np
@@ -22,6 +21,7 @@ glove_para = {
 
 @EmbeddingModel.train_register("glove")
 def glove_train(self:EmbeddingModel, model_name:str = "glove") -> None:
+    from glovpy import GloVe
     reviews = self.train_expanded.toPandas()["words_nostop"].tolist()
     model = GloVe(**glove_para)
     model.train(reviews)
@@ -39,18 +39,19 @@ def glove_predict(self: EmbeddingModel, model_name:str = "glove") -> tuple[DataF
 
     @F.udf(VectorUDT())
     def review_vector(tokens):
-        total = np.zeros(dimension,np.float64)
-        count = 0
         known = broadcast_vectors.value
-        for token in tokens or []:
-            vector = known.get(token)
-            if vector is not None:
-                total += vector
-                count += 1
-        
-        if count:
-            total = total / count
-        return Vectors.dense(total.tolist())
+        vectors = [known.get(token) for token in tokens or []]
+        if not vectors:
+            return Vectors.dense(np.zeros(dimension * 3, np.float64).tolist())
+        bounds = [round(i * len(vectors) / 3) for i in range(4)]
+        parts = []
+        for start, end in zip(bounds, bounds[1:]):
+            rows = [vector for vector in vectors[start:end] if vector is not None]
+            if rows:
+                parts.append(np.mean(rows, axis=0))
+            else:
+                parts.append(np.zeros(dimension, np.float64))
+        return Vectors.dense(np.concatenate(parts).tolist())
     
     def transform(df: DataFrame) -> DataFrame:
         return df.withColumn("embedding", review_vector(F.col("words_nostop")))

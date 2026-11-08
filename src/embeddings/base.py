@@ -28,14 +28,23 @@ class EmbeddingModel:
         df_train: DataFrame,
         df_valid:DataFrame,
         df_test: DataFrame,
-        use_expanded_data:bool = True
+        use_expanded_data: bool = True,
     ) -> None:
         self.train = df_train
         self.valid = df_valid
         self.test = df_test
-        if use_expanded_data: self.train_expanded = self._expand_webmd_data()
+        self.use_expanded_data = use_expanded_data
+        self._train_expanded = None
 
-    def _expand_webmd_data(self) -> DataFrame:
+    @property
+    def train_expanded(self) -> DataFrame:
+        if not self.use_expanded_data:
+            return self.train
+        if self._train_expanded is None:
+            self._train_expanded = self._apply_phrases()
+        return self._train_expanded
+
+    def _load_expand_webmd_data(self) -> DataFrame:
         words_col = ["words","words_nostop","words_featured"]
         data_oi = DataOI()
         with contextlib.redirect_stdout(io.StringIO()):
@@ -57,6 +66,37 @@ class EmbeddingModel:
             .unionByName(reviews_webmd)
             .dropDuplicates(["words_nostop"])
         )
+
+    def _phrase_frame(self, frame: DataFrame, phrases) -> DataFrame:
+        from pyspark.sql.types import ArrayType, StringType
+        import pandas as pd
+
+        @F.pandas_udf(ArrayType(StringType()))
+        def to_phrases(column: pd.Series) -> pd.Series:
+            sentences = [list(words) if words is not None else [] for words in column]
+            return pd.Series(list(phrases[sentences]), index=column.index)
+
+        return frame.withColumn("words_nostop", to_phrases(F.col("words_nostop")))
+
+    def _apply_phrases(self) -> DataFrame:
+        from gensim.models.phrases import Phrases
+
+        train_sentences = [
+            list(words) if words is not None else []
+            for words in self.train.select("words").toPandas()["words"].tolist()
+        ]
+        phrases = Phrases(
+            train_sentences,
+            min_count=20,
+            scoring="npmi",
+            threshold=0.5,
+            delimiter="_",
+        )
+        expanded = self._phrase_frame(self._load_expand_webmd_data(), phrases)
+        self.train = self._phrase_frame(self.train, phrases)
+        self.valid = self._phrase_frame(self.valid, phrases)
+        self.test = self._phrase_frame(self.test, phrases)
+        return expanded
 
     @classmethod
     def train_register(cls, name: str):
