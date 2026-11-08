@@ -1,0 +1,52 @@
+{
+  "trial": "baseline",
+  "change": "Previous 200-tree full-text configuration",
+  "parameters": {
+    "numTrees": 200,
+    "maxDepth": 16,
+    "seed": 42,
+    "weightCol": "weight"
+  },
+  "text_features": 20000,
+  "train": {
+    "accuracy": 0.5665809768637532,
+    "weighted_f1": 0.5595913773848697,
+    "weighted_precision": 0.5764550316747499,
+    "weighted_recall": 0.5665809768637532,
+    "mae": 1.6111439588688945,
+    "rmse": 3.084355998911372,
+    "prediction_counts": {
+      "1": 17856,
+      "2": 2738,
+      "3": 3447,
+      "4": 2150,
+      "5": 3321,
+      "6": 2551,
+      "7": 4121,
+      "8": 7119,
+      "9": 8072,
+      "10": 26425
+    }
+  },
+  "valid": {
+    "accuracy": 0.36099398941419214,
+    "weighted_f1": 0.3345064259292543,
+    "weighted_precision": 0.3300362536660754,
+    "weighted_recall": 0.36099398941419214,
+    "mae": 2.1247869381896476,
+    "rmse": 3.3956129777100794,
+    "prediction_counts": {
+      "1": 2774,
+      "2": 337,
+      "3": 538,
+      "4": 207,
+      "5": 387,
+      "6": 224,
+      "7": 577,
+      "8": 1025,
+      "9": 1116,
+      "10": 3962
+    }
+  },
+  "fit_seconds": 0
+}

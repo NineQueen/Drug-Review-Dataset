@@ -1,0 +1,41 @@
+{
+  "train": {
+    "rows": 77800,
+    "metrics": {
+      "accuracy": 0.5692159383033419,
+      "weighted_f1": 0.56113468017232,
+      "weighted_precision": 0.5820974826765201,
+      "weighted_recall": 0.5692159383033419,
+      "mae": 1.6044344473007712,
+      "rmse": 3.083493244886332
+    },
+    "predicted_classes": 10
+  },
+  "valid": {
+    "rows": 11147,
+    "metrics": {
+      "accuracy": 0.36835022876110163,
+      "weighted_f1": 0.33539053847312705,
+      "weighted_precision": 0.3275534347178683,
+      "weighted_recall": 0.36835022876110163,
+      "mae": 2.100385754014533,
+      "rmse": 3.3843660844899564
+    },
+    "predicted_classes": 10
+  },
+  "test": {
+    "rows": 22220,
+    "metrics": {
+      "accuracy": 0.3648964896489649,
+      "weighted_f1": 0.3340944077457749,
+      "weighted_precision": 0.3272845723701338,
+      "weighted_recall": 0.3648964896489649,
+      "mae": 2.1063006300630063,
+      "rmse": 3.400614123602054
+    },
+    "predicted_classes": 10
+  },
+  "source_sha256": "71f0ed08ffb2e10fb01e19eccae33f2b0fc93c0213fc5c5b1780ce35be7ff315",
+  "published_pipeline_files_verified": true,
+  "status": "passed"
+}

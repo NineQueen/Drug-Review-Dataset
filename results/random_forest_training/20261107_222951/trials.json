@@ -1,0 +1,39 @@
+[
+  {
+    "trial": "00_original",
+    "change": "Original: text only, depth 5, unweighted",
+    "features": [
+      "embedding"
+    ],
+    "parameters": {
+      "numTrees": 100,
+      "maxDepth": 5,
+      "seed": 42
+    },
+    "fit_seconds": 81.44294679991435,
+    "train": {
+      "accuracy": 0.3162982005141388,
+      "weighted_f1": 0.1520089469231296,
+      "weighted_precision": 0.10004455164848236,
+      "weighted_recall": 0.3162982005141388,
+      "mae": 3.007917737789203,
+      "rmse": 4.447187956427561,
+      "prediction_counts": {
+        "10": 77800
+      }
+    },
+    "valid": {
+      "accuracy": 0.31676684309679737,
+      "weighted_f1": 0.1524054670901746,
+      "weighted_precision": 0.10034123288551104,
+      "weighted_recall": 0.31676684309679737,
+      "mae": 2.9937202834843455,
+      "rmse": 4.432674701106676,
+      "prediction_counts": {
+        "10": 11147
+      }
+    },
+    "delta_valid_f1_previous_pp": 0,
+    "delta_valid_f1_original_pp": 0
+  }
+]

@@ -1,0 +1,66 @@
+{
+  "status": "complete",
+  "selected": {
+    "trial": "calibrated",
+    "alpha": 0.01,
+    "thresholds": [
+      0.9969712306600904,
+      1.0086653153554808,
+      1.0092050152661503,
+      1.0118387425031643,
+      1.007012661966259,
+      1.009487874420656,
+      1.0052972824732098,
+      0.9983673441865036,
+      0.9947122844830265,
+      0.9885508930662781
+    ],
+    "valid": {
+      "accuracy": 0.36835022876110163,
+      "weighted_f1": 0.3353905384731271,
+      "weighted_precision": 0.32755343471786824,
+      "weighted_recall": 0.36835022876110163,
+      "mae": 2.100385754014533,
+      "rmse": 3.3843660844899564,
+      "prediction_counts": {
+        "1": 2812,
+        "2": 300,
+        "3": 501,
+        "4": 172,
+        "5": 358,
+        "6": 186,
+        "7": 475,
+        "8": 1010,
+        "9": 1134,
+        "10": 4199
+      }
+    },
+    "fit_seconds": 0,
+    "delta_accuracy_previous_pp": 0.7356239346909488,
+    "delta_f1_previous_pp": 0.08841125438728281
+  },
+  "test": {
+    "accuracy": 0.3648964896489649,
+    "weighted_f1": 0.334094407745775,
+    "weighted_precision": 0.3272845723701338,
+    "weighted_recall": 0.3648964896489649,
+    "mae": 2.1063006300630063,
+    "rmse": 3.400614123602054,
+    "prediction_counts": {
+      "1": 5507,
+      "2": 625,
+      "3": 958,
+      "4": 376,
+      "5": 756,
+      "6": 345,
+      "7": 993,
+      "8": 2031,
+      "9": 2316,
+      "10": 8313
+    }
+  },
+  "selection_metric": "validation accuracy subject to weighted F1 >= baseline",
+  "saved_model_reload_verified": true,
+  "source_experiment": "results\\random_forest_training\\20261108_011704_text_selection",
+  "operation": "Reuse trained trees; adjust thresholds only"
+}

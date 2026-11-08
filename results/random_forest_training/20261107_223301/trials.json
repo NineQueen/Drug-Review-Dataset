@@ -1,0 +1,462 @@
+[
+  {
+    "trial": "00_original",
+    "change": "Original: text only, depth 5, unweighted",
+    "features": [
+      "embedding"
+    ],
+    "parameters": {
+      "numTrees": 100,
+      "maxDepth": 5,
+      "seed": 42
+    },
+    "fit_seconds": 76.71579569997266,
+    "train": {
+      "accuracy": 0.3162982005141388,
+      "weighted_f1": 0.1520089469231296,
+      "weighted_precision": 0.10004455164848236,
+      "weighted_recall": 0.3162982005141388,
+      "mae": 3.007917737789203,
+      "rmse": 4.447187956427561,
+      "prediction_counts": {
+        "10": 77800
+      }
+    },
+    "valid": {
+      "accuracy": 0.31676684309679737,
+      "weighted_f1": 0.1524054670901746,
+      "weighted_precision": 0.10034123288551104,
+      "weighted_recall": 0.31676684309679737,
+      "mae": 2.9937202834843455,
+      "rmse": 4.432674701106676,
+      "prediction_counts": {
+        "10": 11147
+      }
+    },
+    "delta_valid_f1_previous_pp": 0,
+    "delta_valid_f1_original_pp": 0,
+    "resolved_parameters": {
+      "seed": 42,
+      "maxDepth": 5,
+      "maxBins": 32,
+      "minInstancesPerNode": 1,
+      "minInfoGain": 0.0,
+      "maxMemoryInMB": 256,
+      "cacheNodeIds": false,
+      "checkpointInterval": 10,
+      "impurity": "gini",
+      "numTrees": 100,
+      "featureSubsetStrategy": "auto",
+      "subsamplingRate": 1.0,
+      "leafCol": "",
+      "minWeightFractionPerNode": 0.0,
+      "bootstrap": true,
+      "predictionCol": "prediction",
+      "featuresCol": "features",
+      "labelCol": "rating_p1",
+      "rawPredictionCol": "rawPrediction",
+      "probabilityCol": "probability"
+    }
+  },
+  {
+    "trial": "01_weights",
+    "change": "Only enable training class weights",
+    "features": [
+      "embedding"
+    ],
+    "parameters": {
+      "numTrees": 100,
+      "maxDepth": 5,
+      "seed": 42,
+      "weightCol": "weight"
+    },
+    "fit_seconds": 67.75914249999914,
+    "train": {
+      "accuracy": 0.34616966580976866,
+      "weighted_f1": 0.3317920779690208,
+      "weighted_precision": 0.34697599066704177,
+      "weighted_recall": 0.3461696658097686,
+      "mae": 2.453329048843188,
+      "rmse": 3.798492800814636,
+      "prediction_counts": {
+        "7": 4812,
+        "8": 6519,
+        "2": 3454,
+        "5": 3330,
+        "10": 23613,
+        "9": 5821,
+        "1": 21905,
+        "4": 2972,
+        "3": 2829,
+        "6": 2545
+      }
+    },
+    "valid": {
+      "accuracy": 0.31156364941239795,
+      "weighted_f1": 0.2974366485915538,
+      "weighted_precision": 0.3139580581824731,
+      "weighted_recall": 0.311563649412398,
+      "mae": 2.551538530546335,
+      "rmse": 3.8470348377874903,
+      "prediction_counts": {
+        "8": 923,
+        "7": 720,
+        "5": 534,
+        "2": 475,
+        "10": 3310,
+        "9": 815,
+        "1": 3171,
+        "4": 412,
+        "3": 427,
+        "6": 360
+      }
+    },
+    "delta_valid_f1_previous_pp": 14.503118150137917,
+    "delta_valid_f1_original_pp": 14.503118150137917,
+    "resolved_parameters": {
+      "seed": 42,
+      "maxDepth": 5,
+      "maxBins": 32,
+      "minInstancesPerNode": 1,
+      "minInfoGain": 0.0,
+      "maxMemoryInMB": 256,
+      "cacheNodeIds": false,
+      "checkpointInterval": 10,
+      "impurity": "gini",
+      "numTrees": 100,
+      "featureSubsetStrategy": "auto",
+      "subsamplingRate": 1.0,
+      "leafCol": "",
+      "minWeightFractionPerNode": 0.0,
+      "bootstrap": true,
+      "predictionCol": "prediction",
+      "featuresCol": "features",
+      "labelCol": "rating_p1",
+      "rawPredictionCol": "rawPrediction",
+      "probabilityCol": "probability",
+      "weightCol": "weight"
+    }
+  },
+  {
+    "trial": "02_depth10",
+    "change": "Only increase maxDepth from 5 to 10",
+    "features": [
+      "embedding"
+    ],
+    "parameters": {
+      "numTrees": 100,
+      "maxDepth": 10,
+      "seed": 42,
+      "weightCol": "weight"
+    },
+    "fit_seconds": 122.86247159994673,
+    "train": {
+      "accuracy": 0.4146143958868895,
+      "weighted_f1": 0.4046927335119079,
+      "weighted_precision": 0.4229041055112795,
+      "weighted_recall": 0.4146143958868894,
+      "mae": 2.208547557840617,
+      "rmse": 3.618150829382949,
+      "prediction_counts": {
+        "8": 7222,
+        "7": 4861,
+        "2": 3374,
+        "5": 3323,
+        "10": 23101,
+        "9": 6580,
+        "1": 20876,
+        "4": 2762,
+        "6": 2878,
+        "3": 2823
+      }
+    },
+    "valid": {
+      "accuracy": 0.31999641159056247,
+      "weighted_f1": 0.30692886338991604,
+      "weighted_precision": 0.3197868007744253,
+      "weighted_recall": 0.3199964115905625,
+      "mae": 2.452677850542747,
+      "rmse": 3.745491593302558,
+      "prediction_counts": {
+        "8": 1038,
+        "7": 701,
+        "2": 482,
+        "5": 490,
+        "10": 3301,
+        "9": 906,
+        "1": 3055,
+        "4": 356,
+        "6": 421,
+        "3": 397
+      }
+    },
+    "delta_valid_f1_previous_pp": 0.9492214798362264,
+    "delta_valid_f1_original_pp": 15.452339629974144,
+    "resolved_parameters": {
+      "seed": 42,
+      "maxDepth": 10,
+      "maxBins": 32,
+      "minInstancesPerNode": 1,
+      "minInfoGain": 0.0,
+      "maxMemoryInMB": 256,
+      "cacheNodeIds": false,
+      "checkpointInterval": 10,
+      "impurity": "gini",
+      "numTrees": 100,
+      "featureSubsetStrategy": "auto",
+      "subsamplingRate": 1.0,
+      "leafCol": "",
+      "minWeightFractionPerNode": 0.0,
+      "bootstrap": true,
+      "predictionCol": "prediction",
+      "featuresCol": "features",
+      "labelCol": "rating_p1",
+      "rawPredictionCol": "rawPrediction",
+      "probabilityCol": "probability",
+      "weightCol": "weight"
+    }
+  },
+  {
+    "trial": "03_depth16",
+    "change": "Only increase maxDepth from 10 to 16",
+    "features": [
+      "embedding"
+    ],
+    "parameters": {
+      "numTrees": 100,
+      "maxDepth": 16,
+      "seed": 42,
+      "weightCol": "weight"
+    },
+    "fit_seconds": 214.60272720002104,
+    "train": {
+      "accuracy": 0.5251799485861183,
+      "weighted_f1": 0.5195214356667568,
+      "weighted_precision": 0.5427337430588547,
+      "weighted_recall": 0.5251799485861183,
+      "mae": 1.8296401028277636,
+      "rmse": 3.3267707463802973,
+      "prediction_counts": {
+        "8": 7659,
+        "7": 4963,
+        "5": 3605,
+        "2": 3090,
+        "10": 23490,
+        "9": 7115,
+        "1": 19848,
+        "4": 2270,
+        "3": 2913,
+        "6": 2847
+      }
+    },
+    "valid": {
+      "accuracy": 0.33291468556562304,
+      "weighted_f1": 0.31529355070955517,
+      "weighted_precision": 0.32316520445794494,
+      "weighted_recall": 0.33291468556562304,
+      "mae": 2.3641338476720195,
+      "rmse": 3.648685969352729,
+      "prediction_counts": {
+        "8": 1084,
+        "7": 693,
+        "2": 443,
+        "5": 492,
+        "9": 933,
+        "10": 3451,
+        "1": 3025,
+        "4": 243,
+        "6": 386,
+        "3": 397
+      }
+    },
+    "delta_valid_f1_previous_pp": 0.836468731963913,
+    "delta_valid_f1_original_pp": 16.288808361938056,
+    "resolved_parameters": {
+      "seed": 42,
+      "maxDepth": 16,
+      "maxBins": 32,
+      "minInstancesPerNode": 1,
+      "minInfoGain": 0.0,
+      "maxMemoryInMB": 256,
+      "cacheNodeIds": false,
+      "checkpointInterval": 10,
+      "impurity": "gini",
+      "numTrees": 100,
+      "featureSubsetStrategy": "auto",
+      "subsamplingRate": 1.0,
+      "leafCol": "",
+      "minWeightFractionPerNode": 0.0,
+      "bootstrap": true,
+      "predictionCol": "prediction",
+      "featuresCol": "features",
+      "labelCol": "rating_p1",
+      "rawPredictionCol": "rawPrediction",
+      "probabilityCol": "probability",
+      "weightCol": "weight"
+    }
+  },
+  {
+    "trial": "04_features",
+    "change": "Only add condition, date and useful votes",
+    "features": [
+      "embedding",
+      "condition_vec",
+      "days",
+      "usefulCount_log"
+    ],
+    "parameters": {
+      "numTrees": 100,
+      "maxDepth": 16,
+      "seed": 42,
+      "weightCol": "weight"
+    },
+    "fit_seconds": 498.76136750006117,
+    "train": {
+      "accuracy": 0.5487146529562982,
+      "weighted_f1": 0.5403979894866751,
+      "weighted_precision": 0.5557132503388397,
+      "weighted_recall": 0.5487146529562982,
+      "mae": 1.6540616966580977,
+      "rmse": 3.112719572375062,
+      "prediction_counts": {
+        "1": 17749,
+        "2": 3242,
+        "3": 3203,
+        "4": 2290,
+        "5": 3526,
+        "6": 2614,
+        "7": 4328,
+        "8": 7195,
+        "9": 7622,
+        "10": 26031
+      }
+    },
+    "valid": {
+      "accuracy": 0.3511258634610209,
+      "weighted_f1": 0.327617062546929,
+      "weighted_precision": 0.32561649128551834,
+      "weighted_recall": 0.3511258634610209,
+      "mae": 2.178254238808648,
+      "rmse": 3.4388766235566663,
+      "prediction_counts": {
+        "1": 2718,
+        "2": 443,
+        "3": 479,
+        "4": 240,
+        "5": 462,
+        "6": 305,
+        "7": 599,
+        "8": 995,
+        "9": 1008,
+        "10": 3898
+      }
+    },
+    "delta_valid_f1_previous_pp": 1.2323511837373846,
+    "delta_valid_f1_original_pp": 17.52115954567544,
+    "resolved_parameters": {
+      "seed": 42,
+      "maxDepth": 16,
+      "maxBins": 32,
+      "minInstancesPerNode": 1,
+      "minInfoGain": 0.0,
+      "maxMemoryInMB": 256,
+      "cacheNodeIds": false,
+      "checkpointInterval": 10,
+      "impurity": "gini",
+      "numTrees": 100,
+      "featureSubsetStrategy": "auto",
+      "subsamplingRate": 1.0,
+      "leafCol": "",
+      "minWeightFractionPerNode": 0.0,
+      "bootstrap": true,
+      "predictionCol": "prediction",
+      "featuresCol": "features",
+      "labelCol": "rating_p1",
+      "rawPredictionCol": "rawPrediction",
+      "probabilityCol": "probability",
+      "weightCol": "weight"
+    }
+  },
+  {
+    "trial": "05_trees",
+    "change": "Only increase numTrees from 100 to 200",
+    "features": [
+      "embedding",
+      "condition_vec",
+      "days",
+      "usefulCount_log"
+    ],
+    "parameters": {
+      "numTrees": 200,
+      "maxDepth": 16,
+      "seed": 42,
+      "weightCol": "weight"
+    },
+    "fit_seconds": 1017.0876894999528,
+    "train": {
+      "accuracy": 0.5665809768637532,
+      "weighted_f1": 0.5595913773848697,
+      "weighted_precision": 0.5764550316747499,
+      "weighted_recall": 0.5665809768637532,
+      "mae": 1.6111439588688945,
+      "rmse": 3.084355998911372,
+      "prediction_counts": {
+        "1": 17856,
+        "2": 2738,
+        "3": 3447,
+        "4": 2150,
+        "5": 3321,
+        "6": 2551,
+        "7": 4121,
+        "8": 7119,
+        "9": 8072,
+        "10": 26425
+      }
+    },
+    "valid": {
+      "accuracy": 0.36099398941419214,
+      "weighted_f1": 0.3345064259292543,
+      "weighted_precision": 0.3300362536660754,
+      "weighted_recall": 0.36099398941419214,
+      "mae": 2.1247869381896476,
+      "rmse": 3.3956129777100794,
+      "prediction_counts": {
+        "1": 2774,
+        "2": 337,
+        "3": 538,
+        "4": 207,
+        "5": 387,
+        "6": 224,
+        "7": 577,
+        "8": 1025,
+        "9": 1116,
+        "10": 3962
+      }
+    },
+    "delta_valid_f1_previous_pp": 0.6889363382325264,
+    "delta_valid_f1_original_pp": 18.210095883907968,
+    "resolved_parameters": {
+      "seed": 42,
+      "maxDepth": 16,
+      "maxBins": 32,
+      "minInstancesPerNode": 1,
+      "minInfoGain": 0.0,
+      "maxMemoryInMB": 256,
+      "cacheNodeIds": false,
+      "checkpointInterval": 10,
+      "impurity": "gini",
+      "numTrees": 200,
+      "featureSubsetStrategy": "auto",
+      "subsamplingRate": 1.0,
+      "leafCol": "",
+      "minWeightFractionPerNode": 0.0,
+      "bootstrap": true,
+      "predictionCol": "prediction",
+      "featuresCol": "features",
+      "labelCol": "rating_p1",
+      "rawPredictionCol": "rawPrediction",
+      "probabilityCol": "probability",
+      "weightCol": "weight"
+    }
+  }
+]

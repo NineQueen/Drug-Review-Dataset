@@ -1,0 +1,3 @@
+# Preserve Spark model bytes so Hadoop checksum files stay valid.
+src/embeddings/models/** -text
+src/analytics/models/** -text
