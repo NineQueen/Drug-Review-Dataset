@@ -7,18 +7,14 @@ from src.paths import ANALYTIC_MODELS_DIR
 
 FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_vec"]
 
-tfidf_para = {
-    "regParam" : 0.1,
-    "weightCol":"weight",
+DEFAULT_PARA = {
+    "regParam": 0.1,
+    "maxIter": 100,
+    "elasticNetParam": 0.0,
+    "weightCol": "weight",
 }
-glove_para = {
-    "regParam" : 0.3,
-    "weightCol":"weight",
-}
-
-para_list = {
-    "tfidf": tfidf_para,
-    "glove": glove_para 
+PARA_RANGE = {
+    "regParam": [0.01, 0.1, 0.3, 1.0],
 }
 
 @AnalyticsModel.baseline_register()
@@ -35,15 +31,16 @@ def lr_baseline(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
     )
 
 @AnalyticsModel.register("lr_improved")
-def lr_improved(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
-    # `rating_p1` is 0–9. This unweighted model is the required baseline.
-    train_df, valid_df,test_df = self._feature_transform(FEATURES)
+def lr_improved(
+    self: AnalyticsModel,
+    para: dict = DEFAULT_PARA,
+) -> tuple[DataFrame, DataFrame, DataFrame]:
+    # `rating_p1` is 0–9. The same parameters are used for every embedding.
+    train_df, valid_df, test_df = self._feature_transform(FEATURES)
     lr_improved_model = LogisticRegression(
         featuresCol="features",
         labelCol="rating_p1",
-        maxIter=100,
-        elasticNetParam=0.0,
-        **para_list[self.embedding_model]
+        **para,
     ).fit(train_df)
     columns = ["uniqueID", "rating", "prediction"]
     return (
