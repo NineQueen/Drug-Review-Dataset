@@ -27,7 +27,8 @@ def random_forest(
     params = {
         "numTrees": 200,
         "maxDepth": 16,
-        "minInstancesPerNode": 1,
+        "minInstancesPerNode": 20,
+        "maxMemoryInMB": 64,
         "seed": 42,
         **(rf_params or {}),
     }
