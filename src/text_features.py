@@ -1,3 +1,4 @@
+from gensim.models.phrases import FrozenPhrases
 from nltk.stem import PorterStemmer
 from pyspark.ml import Pipeline
 from pyspark.ml.feature import NGram, RegexTokenizer, StopWordsRemover, Tokenizer
@@ -75,43 +76,17 @@ def text_feature_engineering(
         df: DataFrame,
         use_bigrams: bool = False,
     ) -> DataFrame:
-    review_repaired = normalize_review_text(F.col("review"))
-    remaining_repairs = df.filter(
-        ~F.col("review").eqNullSafe(review_repaired)
-    ).count()
-    print(
-        f"Before character repair: {remaining_repairs} `review` values "
-        "require character or whitespace normalization"
-    )
-
-    df = df.withColumn("review", review_repaired)
-    remaining_repairs = df.filter(
-        ~F.col("review").eqNullSafe(
-            normalize_review_text(F.col("review"))
-        )
-    ).count()
-    print(
-        f"After character repair: {remaining_repairs} `review` values "
-        "would change on a second pass (idempotence check)"
-    )
-
-    expanded_review = expand_review_contractions(F.col("review"))
-    changed_contractions = df.filter(
-        ~F.col("review").eqNullSafe(expanded_review)
-    ).count()
-    df = df.withColumn("review", expanded_review)
-    print(f"Contraction repair and expansion: {changed_contractions} `review` values changed")
-
-    df = df.withColumn(
-        "review",
-        normalize_dose_spacing(F.col("review")),
-    )
+    df = df.withColumn("review", normalize_review_text(F.col("review")))
+    df = df.withColumn("review", expand_review_contractions(F.col("review")))
+    df = df.withColumn("review", normalize_dose_spacing(F.col("review")))
 
     df = df.withColumn("review_clean", F.col("review"))
 
-    # Keep negative words when removing stop words
+    # Keep negation, contrast, and degree words when removing stop words.
     protected_words = {
-        "not", "no", "nor", "never", "neither", "without", "cannot"
+        "not", "no", "nor", "never", "neither", "without", "cannot",
+        "but", "only",
+        "very", "too", "more", "most",
     }
     custom_stop_words = [
         word
@@ -188,3 +163,31 @@ def text_feature_engineering(
 
     # TF-IDF uses stems; other embeddings can use the retained `review` or unstemmed `words`.
     return df.drop("review_clean", "_ngram_words", "_bigrams")
+
+def fit_phrases(train_df: DataFrame) -> FrozenPhrases:
+    """Fit phrase rules on the training `words` column and return them frozen."""
+    from gensim.models.phrases import Phrases
+
+    sentences = [
+        list(words) if words is not None else []
+        for words in train_df.select("words").toPandas()["words"].tolist()
+    ]
+    phrases = Phrases(
+        sentences,
+        min_count=20,
+        scoring="npmi",
+        threshold=0.5,
+        delimiter="_",
+    )
+    return phrases.freeze()
+
+def apply_phrases(df: DataFrame, phrases: FrozenPhrases) -> DataFrame:
+    """Replace `words_nostop` with phrase tokens from the frozen rules."""
+    import pandas as pd
+
+    @F.pandas_udf(ArrayType(StringType()))
+    def to_phrases(column: pd.Series) -> pd.Series:
+        sentences = [list(words) if words is not None else [] for words in column]
+        return pd.Series(list(phrases[sentences]), index=column.index)
+
+    return df.withColumn("words_nostop", to_phrases(F.col("words_nostop")))

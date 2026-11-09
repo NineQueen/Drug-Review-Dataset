@@ -7,7 +7,7 @@ from pyspark.sql import functions as F
 from src.paths import EMBEDDING_MODELS_DIR
 
 glove_para = {
-    "vector_size": 100,
+    "vector_size": 200,
     "window_size": 5,
     "min_count": 5,
     "iter": 50,
@@ -22,7 +22,8 @@ glove_para = {
 @EmbeddingModel.train_register("glove")
 def glove_train(self:EmbeddingModel, model_name:str = "glove") -> None:
     from glovpy import GloVe
-    reviews = self.train_expanded.toPandas()["words_nostop"].tolist()
+    tokens = self.train_expanded_phrase.select("words_nostop").toPandas()["words_nostop"]
+    reviews = [list(sentence) if sentence is not None else [] for sentence in tokens]
     model = GloVe(**glove_para)
     model.train(reviews)
 
@@ -56,4 +57,8 @@ def glove_predict(self: EmbeddingModel, model_name:str = "glove") -> tuple[DataF
     def transform(df: DataFrame) -> DataFrame:
         return df.withColumn("embedding", review_vector(F.col("words_nostop")))
     
-    return transform(self.train), transform(self.valid), transform(self.test)
+    return (
+        transform(self.train_phrase),
+        transform(self.valid_phrase),
+        transform(self.test_phrase),
+    )

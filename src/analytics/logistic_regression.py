@@ -33,14 +33,18 @@ def lr_baseline(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
 @AnalyticsModel.register("lr_improved")
 def lr_improved(
     self: AnalyticsModel,
-    para: dict = DEFAULT_PARA,
+    para: dict | None = None,
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
-    # `rating_p1` is 0–9. The same parameters are used for every embedding.
+    # `rating_p1` is 0–9. Passed keys override DEFAULT_PARA.
+    params = {
+        **DEFAULT_PARA,
+        **(para or {}),
+    }
     train_df, valid_df, test_df = self._feature_transform(FEATURES)
     lr_improved_model = LogisticRegression(
         featuresCol="features",
         labelCol="rating_p1",
-        **para,
+        **params,
     ).fit(train_df)
     columns = ["uniqueID", "rating", "prediction"]
     return (

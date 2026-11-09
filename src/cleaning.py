@@ -51,29 +51,22 @@ def data_cleaning(df: DataFrame) -> DataFrame:
         review = F.trim(F.regexp_replace(review, r"\s+", " "))
         return df.withColumn("review", review)
 
-    print("="*32)
+    # Stage lines only. Counts and summaries are Spark actions and would
+    # recompute this frame before the caller caches it.
+    print("=" * 32)
     print("Data Cleaning")
-    print("="*32)
+    print("=" * 32)
 
-    row_count = df.count()
     df = df.dropna(subset="condition")
-    print(f"After dropping rows with a null `condition`\nRow count: {row_count} -> {df.count()}, removed {row_count - df.count()} rows")
-    row_count = df.count()
+    print("Dropped rows with a null `condition`")
 
     df = df.filter(~F.col("condition").contains("</span> users found this comment helpful"))
-    print(f"After dropping rows whose `condition` contains '</span> users found this comment helpful'\nRow count: {row_count} -> {df.count()}, removed {row_count - df.count()} rows")
+    print("Dropped rows whose `condition` contains '</span> users found this comment helpful'")
 
-    # This counts only configured condition repairs, not every possible malformed name.
-    remaining_conditions = df.filter(F.col("condition").isin(list(replacement["condition"]))).count()
-    remaining_entities = df.filter(F.col("review").rlike("&(#x?[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);")).count()
-    print(f"Before replacement: {remaining_conditions} `condition` values match configured repairs, {remaining_entities} `review` values contain HTML entities")
     df = replace_condition_and_review(df)
-    remaining_conditions = df.filter(F.col("condition").isin(list(replacement["condition"]))).count()
-    remaining_entities = df.filter(F.col("review").rlike("&(#x?[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);")).count()
-    print(f"After replacement: {remaining_conditions} `condition` values still match configured repairs, {remaining_entities} `review` values contain HTML entities")
+    print("Applied configured `condition` repairs and HTML-entity decoding")
 
     # `dropDuplicates` does not define which copy survives. Keep the greater `usefulCount`, then the greater `uniqueID`.
-    row_count = df.count()
     df = df.withColumn("review", F.lower("review"))
     df_best = (
         df.groupBy("review")
@@ -85,7 +78,7 @@ def data_cleaning(df: DataFrame) -> DataFrame:
         )
     )
     df = df.join(df_best, ["review", "usefulCount", "uniqueID"]).select(*df.columns)
-    print(f"After keeping the row with the highest `usefulCount` for each `review`\nRow count: {row_count} -> {df.count()}, removed {row_count - df.count()} rows")
+    print("Kept the row with the highest `usefulCount` for each `review`")
 
     # `usefulCount` is skewed and counts votes cast after the review was published.
     df = df.withColumn(
@@ -93,20 +86,6 @@ def data_cleaning(df: DataFrame) -> DataFrame:
         F.log1p("usefulCount")
     )
     print("Added `usefulCount_log` = log(1 + `usefulCount`)")
-
-    useful_stats = df.agg(
-        F.lit("usefulCount").alias("column"),
-        F.variance("usefulCount").alias("variance"),
-        F.stddev("usefulCount").alias("stddev"),
-        F.skewness("usefulCount").alias("skewness"),
-    )
-    useful_log_stats = df.agg(
-        F.lit("usefulCount_log").alias("column"),
-        F.variance("usefulCount_log").alias("variance"),
-        F.stddev("usefulCount_log").alias("stddev"),
-        F.skewness("usefulCount_log").alias("skewness"),
-    )
-    useful_stats.union(useful_log_stats).show()
 
     # One numeric date column. `rating_p1` is the 0–9 classification label.
     print("Added `days` = days since 1970-01-01 from `date`")
@@ -132,11 +111,4 @@ def webmd_data_cleaning(df: DataFrame) -> DataFrame:
         review = F.regexp_replace(review, old, new)
     review = F.lower(F.trim(F.regexp_replace(review, r"(?U)\s+", " ")))
 
-    row_count = df.count()
-    df = df.withColumn("review", review).filter(F.length("review") > 0)
-    cleaned_count = df.count()
-    print(
-        "After dropping empty WebMD `review` values\n"
-        f"Row count: {row_count} -> {cleaned_count}, removed {row_count - cleaned_count} rows"
-    )
-    return df
+    return df.withColumn("review", review).filter(F.length("review") > 0)

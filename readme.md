@@ -34,9 +34,10 @@ python -m pip install -r requirements.txt
 
 ## 运行入口
 
-- `project.ipynb`：完整集成，先 EDA 和预处理，再训练所有已注册 embedding、生成向量，再对每个 analytics 注册函数调用一次并评分。不加权 baseline 单独调用 `baseline()`。
+- `project.ipynb`：完整集成，先 EDA 和预处理，再训练所有已注册 embedding、生成向量，再对每个 analytics 注册函数调用一次并评分。不加权 baseline 单独调用 `baseline()`。需要短语的表示在构造 `EmbeddingModel` 前调用 `fit_phrases(df_train)`。
 - `experiments/embedding_pipeline.ipynb`：选择一个 `embedding_name`，运行该表示及 `registry` 中的 analytics；设为 `tfidf` 即可检查 baseline 表示的流程。
-- `experiments/analytics_pipeline.ipynb`：选择一个 `analytics_name`，这个名字是 `register` 的注册名，运行该分类器与本机已准备的 embedding 组合。
+- `experiments/analytics_pipeline.ipynb`：选择一个 `analytics_name`，这个名字是 `register` 的注册名。embedding 遍历已注册表示：`REBUILD = True` 时训练并保存，`False` 时按注册名读取已有向量。
+- `experiments/para_tuning/para_tuning_pipeline.ipynb`：只为 `EMBEDDING_MODEL` 做 K 折，再搜索 `ANALYTICS_MODEL` 的参数。折向量保存为 `{EMBEDDING_MODEL}_para_{fold}`，不覆盖公共 split。
 
 个人实验分别评分本次运行的 train、validation、test 预测，不混入其他历史缓存；最终比较看 test。主 notebook 仍按已有公共循环做全量集成。TF-IDF + 不加权 LR 是指定 baseline；自动跑出的其他 TF-IDF 组合不计入高级模型要求。
 
@@ -46,7 +47,7 @@ embedding 和 analytics 都接收 train、validation、test。会改变预测的
 
 `data_cleaning()` 保留整行过滤、已配置的 condition / HTML 替换、成对的外层包装引号移除、普通空白合并、小写化和确定性 review 去重，并生成 `days`、`usefulCount_log`、`rating_p1`。包装引号只在两端同时存在时去掉一对：先是解析后的 `"`，再是两端都有的 `&quot;`。只有一侧有引号时保留。普通空白在识别包装前、以及 HTML 解码后再各合并一次。
 
-`text_feature_engineering()` 把字符与 Unicode 空白规范化、缩写展开和剂量空格写回 `review`，再复制临时列 `review_clean` 做分词。停用词步骤保留否定词，词干写入 `words_featured`；主 notebook 调用时打开 bigrams。token 处理不覆盖 `review`。函数返回既有列，不保留 `review_clean`，不删行、不改 ID 或评分，也不二次去重。`baseline_text_feature_engineering()` 只把 `review` 交给 Tokenizer，供单独的 baseline TF-IDF 路径使用。
+`text_feature_engineering()` 把字符与 Unicode 空白规范化、缩写展开和剂量空格写回 `review`，再复制临时列 `review_clean` 做分词。停用词步骤保留否定词，以及 `but`、`only`、`very`、`too`、`more`、`most`，词干写入 `words_featured`；主 notebook 调用时打开 bigrams。token 处理不覆盖 `review`。函数返回既有列，不保留 `review_clean`，不删行、不改 ID 或评分，也不二次去重。`baseline_text_feature_engineering()` 只把 `review` 交给 Tokenizer，供单独的 baseline TF-IDF 路径使用。`fit_phrases(train_df)` 只在训练集 `words` 上拟合短语，不接收参数字典，也不写回公共文本列；`EmbeddingModel` 通过构造参数接收冻结后的规则。
 
 后续若再增加通用文本修复，仍应先写回 `review`，再建立临时 token 列。只处理普遍模式，不建立数据集专属错拼表，也不逐条手工改正全部评论。这些修复发生在清洗去重之后，可能使不同记录得到相同文本或 token；比较模型前应单独统计这种碰撞，不自动合并记录或改动划分。
 
@@ -54,8 +55,9 @@ embedding 和 analytics 都接收 train、validation、test。会改变预测的
 
 所有入口使用 `REBUILD`，含义是**是否重建本入口需要的输入数据**，不控制后面的模型训练。
 
-- 主 notebook / embedding 实验中，`True` 从 CSV 完成清洗、文本特征、约 70/10/20 的哈希划分、类别权重和编码，并保存 train、valid、test；`False` 读取已有 split。
-- analytics 实验中，`True` 还会训练现有 embedding 并保存其向量表；`False` 读取已有 embedding 表。
+- 主 notebook / embedding 实验中，`True` 从 CSV 完成清洗、文本特征、哈希划分、类别权重和编码，并保存 train、valid、test；`False` 读取已有 split。`split_and_weight` 默认比例是 `(7, 1, 2)`，也可以传入 `(8, 2)` 这类正整数比例，长度就是份数。
+- analytics 实验中，`True` 还会训练每一个已注册 embedding 并保存其向量表；`False` 按注册名读取已有向量，不扫描目录。
+- 调参实验中，`True` 在默认训练池上做 K 折，只保存所选 embedding 的 `{EMBEDDING_MODEL}_para_{fold}`；`False` 直接读取这些折向量。公共 split 不受这个入口影响。
 - 首次拉取没有 `data/processed/`，需先重建。后续只改自己的模型时，可复用匹配的输入缓存。
 - 主 notebook 复用 split 时，运行初始化单元格后，可从划分/编码单元格继续；原始数据和 EDA 单元格可跳过。直接 Run All 仍会执行原始数据与 EDA 检查。
 - 修改清洗、文本特征、`replacement.json`、哈希 seed 或公共编码后，需要重建 split 及全部下游结果。只改 embedding 时，需要更新该 embedding 及依赖它的分类器；只改分类器时，更新该模型和预测即可。
@@ -70,8 +72,8 @@ embedding 和 analytics 都接收 train、validation、test。会改变预测的
 AGENTS.md                            AI 工作边界和约定
 project.ipynb                        公共集成入口
 src/cleaning.py                      数据清洗
-src/text_features.py                 文本特征
-src/split.py                         按 ID 哈希划分及训练集权重
+src/text_features.py                 文本特征与短语拟合
+src/split.py                         按 ID 哈希和比例划分，并给第一份加权重
 src/encoder.py                       condition / drug 编码
 src/embeddings/<name>.py             各 embedding 的独立实现
 src/analytics/<name>.py              各分类器的独立实现
