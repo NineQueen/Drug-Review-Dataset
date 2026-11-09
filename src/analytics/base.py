@@ -9,20 +9,30 @@ class AnalyticsModel:
     `self.train_embedding`, `self.valid_embedding`, and `self.test_embedding`.
     One registered function fits on the training frame and returns train,
     validation, and test predictions, in that order. One instance is tied to
-    one embedding name.
+    one embedding name. Every embedding uses that same function.
 
-    `register` stores that function in `registry`. The runner calls
-    `registry[key](instance)`. The required baseline uses `baseline_register`
-    and is called as `instance.baseline()`. The registry key must not contain `__`.
+    The function may take `para`, defaulting to the module-level `DEFAULT_PARA`.
+    That dict is flat and is the same for every embedding. `PARA_RANGE` is one
+    flat dict of candidate lists; the model decides how to search it. The
+    shared runner calls `registry[key](instance)` and therefore uses the
+    default. A tuning call may pass another flat dict with the same keys. The required
+    baseline uses `baseline_register`, takes no parameter dict, and is called as
+    `instance.baseline()`. The registry key must not contain `__`.
+
+    Readable inputs are `embedding` and the already encoded non-text columns.
+    Do not read text columns or build label-derived features. Fit only on the
+    training frame. Validation and test are transformed, not used to fit,
+    calibrate, or select parameters.
 
     Each returned frame has only `uniqueID`, `rating`, and `prediction`.
-    `rating` stays on the original 1-10 scale. `prediction` uses the same 0-9 classes as `rating_p1`.
-    Leave the prediction on that scale; `Scorer` builds `rating_pred = prediction + 1`.
+    `rating` stays on the original 1-10 scale. `prediction` uses the same 0-9
+    classes as `rating_p1`. Leave the prediction on that scale; `Scorer` builds
+    `rating_pred = prediction + 1`. The function returns those frames and does
+    not save a classifier.
 
-    A model that needs one feature vector calls `_feature_transform` with its own column list.
-    That call returns the training, validation, and test frames.
-    `weight`, when a model uses it, exists only on the training split.
-    The validation split checks the fitted model. The test split is reserved for final evaluation.
+    A model that needs one feature vector calls `_feature_transform` with its
+    fixed column list. That call returns the training, validation, and test
+    frames. `weight`, when a model uses it, exists only on the training split.
     """
 
     registry = {}   
@@ -37,7 +47,8 @@ class AnalyticsModel:
     def _feature_transform(self, features: list[str]) -> tuple[DataFrame,DataFrame, DataFrame]:
         """Assemble `features` on the training, validation, and test frames.
 
-        Call from the registered function. The column list is not fixed here.
+        Call from the registered function with that model's fixed column list.
+        The list is not an argument of the registered function.
         """
         assembler = VectorAssembler(inputCols=features, outputCol="features")
         train_df = assembler.transform(self.train_embedding).cache()
