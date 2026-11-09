@@ -1,6 +1,8 @@
 from pyspark.ml.feature import VectorAssembler
 from pyspark.sql import DataFrame
 
+from src.dataOI import DataOI
+
 
 class AnalyticsModel:
     """Predictor trained on frames that already contain `embedding`.
@@ -48,18 +50,26 @@ class AnalyticsModel:
         """Assemble `features` on the training, validation, and test frames.
 
         Call from the registered function with that model's fixed column list.
-        The list is not an argument of the registered function.
+        The list is not an argument of the registered function. The previous
+        feature cache on this instance is released first.
         """
+        self.release_features()
         assembler = VectorAssembler(inputCols=features, outputCol="features")
         train_df = assembler.transform(self.train_embedding).cache()
         valid_df = assembler.transform(self.valid_embedding).cache()
         test_df = assembler.transform(self.test_embedding).cache()
+        self._feature_frames = (train_df, valid_df, test_df)
         return train_df, valid_df, test_df
+
+    def release_features(self) -> None:
+        # Written by AI to release memory held by the previous feature cache.
+        """Drop feature caches created by the last `_feature_transform`."""
+        DataOI.unpersist(*getattr(self, "_feature_frames", ()))
+        self._feature_frames = ()
 
     @classmethod
     def register(cls, name: str):
         def decorator(function):
-            # `name` is the registry key. The notebook calls `function(instance)`.
             setattr(cls, function.__name__, function)
             cls.registry[name] = function
             return function

@@ -1,7 +1,9 @@
 from pyspark.ml.evaluation import MulticlassClassificationEvaluator, RegressionEvaluator
 from pyspark.sql import DataFrame, SparkSession
+
+from src.dataOI import DataOI
 from pyspark.sql import functions as F
-from pyspark.sql.types import DoubleType, IntegerType, StringType, StructField, StructType
+from pyspark.sql.types import DoubleType, StringType, StructField, StructType
 
 
 class Scorer:
@@ -23,14 +25,6 @@ class Scorer:
             ],
         ])
         self.score = self.spark.createDataFrame([], score_schema)
-        predictions_schema = StructType([
-            StructField("Embedding_Model", StringType(), False),
-            StructField("Analytic_Model", StringType(), False),
-            StructField("uniqueID", IntegerType(), False),
-            StructField("rating", IntegerType(), False),
-            StructField("rating_pred", DoubleType(), False),
-        ])
-        self.predictions = self.spark.createDataFrame([], predictions_schema)
         for model_name, df_pred in test_pred.items():
             # Directory names are `{analytics}__{embedding}`; score columns use embedding first.
             analytics_name, embedding_name = model_name.split("__")
@@ -65,26 +59,17 @@ class Scorer:
             (F.col("Embedding_Model") != embedding_name)
             | (F.col("Analytic_Model") != analytics_name)
         )
-        self.predictions = self.predictions.filter(
-            (F.col("Embedding_Model") != embedding_name)
-            | (F.col("Analytic_Model") != analytics_name)
-        )
 
-        pred = df_pred.select(
-            F.lit(embedding_name).alias("Embedding_Model"),
-            F.lit(analytics_name).alias("Analytic_Model"),
-            "uniqueID", "rating", "rating_pred",
-        ).cache()
+        pred = df_pred.select("rating", "rating_pred").cache()
         pred.count()
-
         metric_values = self._metrics(pred)
+        DataOI.unpersist(pred)
+
         row = self.spark.createDataFrame(
             [(embedding_name, analytics_name, *[metric_values[metric] for metric in self.metric_names])],
             schema=self.score.schema,
         )
         self.score = self.score.unionByName(row)
-        self.predictions = self.predictions.unionByName(pred).cache()
-        self.predictions.count()
         return self
 
     def show_metrics(self, **kwargs) -> None:

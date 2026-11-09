@@ -14,9 +14,11 @@ embedding 成员只实现 `src/embeddings/<name>.py`：读取已有文本列，�
 
 主流程依次执行：原始 CSV → EDA → 清洗 → 文本特征 → ID 哈希划分和训练权重 → 类别编码 → embedding 训练 / 变换 → analytics → 评分。embedding 先跑完已注册的训练函数，再跑对应的预测函数。每个 analytics 只调用一次已注册函数，这次调用同时拟合并返回预测。
 
-清洗保持整行过滤、已配置 condition / HTML 替换、成对的外层包装引号移除、普通空白合并、小写化、确定性 review 去重及数值衍生列。包装引号只在两端同时是同一个标记时去掉一对：先是 `"`，再是 `&quot;`；只有一侧有引号时保留。普通空白在这次判断前、以及 HTML 解码后再各合并一次。字符与 Unicode 空白、缩写展开、剂量空格，以及后续文本处理，统一放在文本特征阶段。这些已实现的通用修复先写回 `review`，再复制临时 `review_clean` 准备 token；分词、停用词和词干不覆盖 `review`。停用词保留否定词。主流程调用 `text_feature_engineering` 时打开 bigrams。`baseline_text_feature_engineering` 只对 `review` 做 Tokenizer，用于单独的 baseline TF-IDF。文本阶段不改变行、ID 或标签，也不二次去重或新增永久文本列。后续新增规则只面向普遍问题，不维护数据集专属错拼或逐条评论例外。规范化碰撞需在比较模型前单独检查，不能把 token 或词干相同直接当成重复评论。
+清洗保持整行过滤、已配置 condition / HTML 替换、成对的外层包装引号移除、普通空白合并、小写化、确定性 review 去重及数值衍生列。包装引号只在两端同时是同一个标记时去掉一对：先是 `"`，再是 `&quot;`；只有一侧有引号时保留。普通空白在这次判断前、以及 HTML 解码后再各合并一次。字符与 Unicode 空白、缩写展开、剂量空格，以及后续文本处理，统一放在文本特征阶段。这些已实现的通用修复先写回 `review`，再复制临时 `review_clean` 准备 token；分词、停用词和词干不覆盖 `review`。停用词保留否定词，以及 `but`、`only`、`very`、`too`、`more`、`most`。主流程调用 `text_feature_engineering` 时打开 bigrams。`baseline_text_feature_engineering` 只对 `review` 做 Tokenizer，用于单独的 baseline TF-IDF。文本阶段不改变行、ID 或标签，也不二次去重或新增永久文本列。后续新增规则只面向普遍问题，不维护数据集专属错拼或逐条评论例外。规范化碰撞需在比较模型前单独检查，不能把 token 或词干相同直接当成重复评论。
 
-划分用 `pmod(xxhash64(uniqueID, SEED), 10000)`。桶号小于 7000 为训练，7000 至 7999 为验证，8000 及以上为测试，比例约 70/10/20。默认 `SEED = 42`。固定数据、ID 类型、Spark 版本和 seed 后，归属不受顺序或分区影响。不要改成 `randomSplit`。预处理后样本集合变化时，需要统一重建和记录新基准，不能继续混用旧结果。
+短语不进入公共文本列，也不接收参数字典。`fit_phrases(train_df)` 只在训练集的 `words` 上拟合，参数固定为 `min_count=20`、`scoring="npmi"`、`threshold=0.5`、`delimiter="_"`，返回冻结后的 `FrozenPhrases`，不另存短语模型。`apply_phrases` 在新表上把 `words_nostop` 换成短语 token。需要短语的表示在构造 `EmbeddingModel` 时传入这份结果；类本身不拟合、不保存、不加载短语。传入后得到 `train_phrase`、`valid_phrase`、`test_phrase`。`train_expanded` 把训练集的词列与 WebMD 评论合并，并去掉验证集和测试集里已经出现的 `review`。`train_expanded_phrase` 再套用同一份短语，未传入短语时不能读取。
+
+划分用 `pmod(xxhash64(uniqueID, seed), 10000)`。`split_and_weight` 接受正整数比例，长度就是份数，例如 `(8, 2)` 或 `(7, 1, 2)`。默认 `(7, 1, 2)`：桶号小于 7000 为训练，7000 至 7999 为验证，8000 及以上为测试。不能整除 10000 时，余数进最后一份。第一份是唯一拟合数据，并写入 `weight`。默认 `SEED = 42`。固定数据、ID 类型、Spark 版本、seed 和比例后，归属不受顺序或分区影响。不要改成 `randomSplit`。预处理后样本集合变化时，需要统一重建和记录新基准，不能继续混用旧结果。
 
 模型接收三份数据，构造时按 train、valid、test 传入。
 
@@ -28,7 +30,7 @@ embedding 上的三份表是 `self.train`、`self.valid`、`self.test`。它们�
 
 - `uniqueID`：整数型样本 ID，一行一条评论，必须保留，不能重编。
 - `drugName`、`condition`、`review`：字符串。`review` 保存清洗以及字符、空白、缩写和剂量修复后的完整评论。分词和词干不覆盖此列。
-- `words`、`words_nostop`、`words_featured`：`array<string>`。`words` 是未词干化 token，`words_nostop` 去掉停用词并保留否定词，`words_featured` 是 TF-IDF 使用的词干。这些文本列只供 embedding 读取；表示可以直接读取 `review`、`words` 或 `words_nostop`。analytics 不读取它们，也不在分类器里重新做分词、TF-IDF 或其他表示。
+- `words`、`words_nostop`、`words_featured`：`array<string>`。`words` 是未词干化 token，`words_nostop` 去掉停用词，并保留否定词以及 `but`、`only`、`very`、`too`、`more`、`most`，`words_featured` 是 TF-IDF 使用的词干。这些文本列只供 embedding 读取；表示可以直接读取 `review`、`words` 或 `words_nostop`。analytics 不读取它们，也不在分类器里重新做分词、TF-IDF 或其他表示。
 - `days`：整数，距 1970-01-01 的天数；`usefulCount_log`：double，`log1p(usefulCount)`。投票是在评论发表后累积的，解释模型应用场景时需说明输入条件。
 - `rating`：原始整数评分 1–10，仅作真值；`rating_p1`：整数分类标签 0–9。
 - `condition_idx`、`condition_vec`：类别索引与 Spark ML one-hot 向量。模型可使用 `condition_vec`。
@@ -69,9 +71,11 @@ def my_embedding_predict(self, model_name: str = "my_embedding") -> tuple[DataFr
 
 `model_name` 是磁盘目录名，默认可与注册名相同；基线可以传入另一个名字，例如 `"baseline"`。
 
+构造函数是 `EmbeddingModel(train, valid, test, phrases=None)`。`phrases` 缺省时只保留原始三份表。GloVe 在 `train_expanded_phrase` 上训练，并在三份 `*_phrase` 表上预测。TF-IDF 仍读取 `self.train` 的 `words_featured`。
+
 - `train`：只在 `self.train` 上拟合，并保存到 `EMBEDDING_MODELS_DIR / model_name`。加载预训练模型不等于允许在验证集或测试集做适配或调参。
 - `predict`：从该目录加载已保存的模型，变换 `self.train`、`self.valid`、`self.test`，按这个顺序返回。不要在预测阶段重新拟合词表或任何学习得到的变换。
-- 返回的三份表都保留原有列和样本，并新增 `embedding`。其类型必须为 Spark ML `VectorUDT`，例如 DenseVector 或 SparseVector；数组 / Python list 应在模型内部转为向量。
+- 返回的三份表保留全部样本，并新增 `embedding`。注册好的 `predict` 随后只留下 `uniqueID`、`rating`、`rating_p1`、训练集上的 `weight`、`condition_idx`、`condition_vec`、`days`、`usefulCount_log`、`drugName_idx`、`drugName_vec` 和 `embedding`。`review`、`words`、`words_nostop`、`words_featured` 以及表示内部的中间列（例如 TF-IDF 的 `tf`）不进入输出。`embedding` 必须是 Spark ML `VectorUDT`，例如 DenseVector 或 SparseVector；数组 / Python list 应在模型内部转为向量。
 - 同一模型在训练、验证、测试上的向量维数一致，不能有 null、NaN 或无限值。不可为了处理失败样本而静默删行或改变 ID；模型内部必须给出保持样本覆盖的处理方式。
 - 模型专用的文本处理可以放在自己的 embedding 文件里，但不覆盖公共 `review`、`words`、`words_nostop` 或 `words_featured`。analytics 不读取这些列。
 
@@ -151,9 +155,11 @@ embedding owner 只保存自己的拟合表示。Spark 保存前只创建模型�
 
 组合名按 `analytics__embedding` 排列，例如 `lr_improved__tfidf`。评分表保留既有列名 `Embedding_Model` 和 `Analytic_Model`，不要自行重命名。`Scorer` 创建 `rating_pred = prediction + 1`，再与 `rating` 比较。Accuracy 与 support-weighted Precision、F1 越大越好。support-weighted Recall 与 Accuracy 相同，不再单独列出。MAE / RMSE 用原始评分单位，越小越好。相同组合重加时只替换该组合，其他组合保留。
 
-`embedding_pipeline.ipynb` 只训练选中的 `embedding_name`，设为 `tfidf` 即可检查 baseline 表示的流程，再对 `AnalyticsModel.registry` 里的分类器各调用一次。`analytics_pipeline.ipynb` 只运行选中的 `analytics_name`，这个名字是 `register` 的注册名，使用本机已准备的所有 embedding。两个入口都按 train、valid、test 评分。验证分数只在函数返回后查看，最终比较看测试分数。分类器函数内部不读取这两份数据来改模型。主 runner 做全量集成，不改成针对个人模型的特例。不加权 baseline 由 `baseline()` 调用，不在 `registry` 里。
+`embedding_pipeline.ipynb` 只训练选中的 `embedding_name`，设为 `tfidf` 即可检查 baseline 表示的流程，再对 `AnalyticsModel.registry` 里的分类器各调用一次。`analytics_pipeline.ipynb` 只运行选中的 `analytics_name`，这个名字是 `register` 的注册名；embedding 遍历 `EmbeddingModel.predict_registry`，不扫描向量目录。`REBUILD = True` 时训练并保存每一个已注册表示，`False` 时按注册名调用 `load_embedding_data(name)`。两个入口都按 train、valid、test 评分。验证分数只在函数返回后查看，最终比较看测试分数。分类器函数内部不读取这两份数据来改模型。主 runner 做全量集成，不改成针对个人模型的特例。不加权 baseline 由 `baseline()` 调用，不在 `registry` 里。
 
-`REBUILD` 仅控制输入准备，具体阶段见 README。新环境需要先生成本地缓存；有缓存时可以只重跑模型阶段。现有加载器枚举本地目录，半成品目录需清理或补跑。模型变化后重建受影响的下游结果，避免把旧预测当作新模型表现。
+`experiments/para_tuning/para_tuning_pipeline.ipynb` 只调 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL` 这一对。`REBUILD = True` 时先用默认 `(7, 1, 2)` 取出训练池。训练行已经占用 `SEED` 的 0–6999 号桶，折内再用 `split_and_weight(train.drop("weight"), SEED + 1, (1,) * K)` 切成 K 份。每一折用其余各份拼成拟合行并重算 `weight`，`encoder` 和 `fit_phrases` 各拟合一次，然后只训练这个 embedding，保存为 `{EMBEDDING_MODEL}_para_{fold}`。第三份是空表。这个入口不覆盖 `data/processed/split`。参数循环按这个名字读回各折，不再重训表示；选出的参数仍写到 `{EMBEDDING_MODEL}_{ANALYTICS_MODEL}.json`。折内缓存放到该折保存完再释放，K 份折数据在全部折结束后释放。
+
+`REBUILD` 仅控制输入准备，具体阶段见 README。新环境需要先生成本地缓存；有缓存时可以只重跑模型阶段。向量按注册名读取，对应目录需要同时有 train、valid、test。预测加载会遍历 `data/processed/predictions`。半成品目录需清理或补跑。模型变化后重建受影响的下游结果，避免把旧预测当作新模型表现。
 
 ## 7. 交接前自查
 
