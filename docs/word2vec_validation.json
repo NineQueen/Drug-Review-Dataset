@@ -20,12 +20,10 @@
   "latest_tokenizer_sample_parity": true,
   "base_commit": "f47fd8d7585526638cdf0b30b98ad168bae6ccb1",
   "source_sha256": {
-    "src/embeddings/word2vec.py": "a7951efb32db82601f53f3b97d76fdd5e125b33cd983e09ca292aee0093be6cc",
-    "experiments/word2vec_delivery_check.py": "c4a021501fdf10ed8c6825b23804a4c818e59305ecc7f1e8f867b5856f0faa4f"
+    "src/embeddings/word2vec.py": "a7951efb32db82601f53f3b97d76fdd5e125b33cd983e09ca292aee0093be6cc"
   },
   "final_source_sha256": {
-    "src/embeddings/word2vec.py": "b09e87c3ef435727d537801e1afb53c64076f326c4e172fbb6418a4b7e2b388a",
-    "experiments/word2vec_delivery_check.py": "c4a021501fdf10ed8c6825b23804a4c818e59305ecc7f1e8f867b5856f0faa4f"
+    "src/embeddings/word2vec.py": "b09e87c3ef435727d537801e1afb53c64076f326c4e172fbb6418a4b7e2b388a"
   },
   "final_revision_note": "After Spark validation, config writer explicitly uses LF; targeted JSON and LF-byte checks passed. Pooling/training logic unchanged."
 }

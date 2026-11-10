@@ -64,14 +64,8 @@ custom_train, custom_valid, custom_test = model.word2vec_predict("word2vec_custo
 
 模型目录内 `.gitattributes` 对该目录设置 `-text`，保留Spark元数据、Parquet及Hadoop CRC的原始字节。提交其他新模型时应保留训练函数生成的同类属性文件，不手动删减模型内部文件。
 
-## 检查
+## 验证记录
 
-按根README准备Python3.12/PySpark4.2/Java21及依赖，创建可用环境后，从仓库根目录运行：
+交付前已在 Python3.12 / PySpark4.2 / Java21 环境完成接口与小样本检查，结果见 `word2vec_validation.json`。检查覆盖注册、默认600维、自定义配置、配置持久化、仅train拟合词表、空/OOV输入、meanmax计算及Parquet保存加载，并比对了历史向量。
 
-```bash
-python experiments/word2vec_delivery_check.py
-```
-
-该脚本只训练临时小样本模型，检查注册、默认600维、自定义p01/meanmax维度、配置持久化、重复训练、仅train拟合词表、空/OOV、负坐标最大值、窄输出与Parquet保存加载，不改交付模型。结果和临时文件位于 `tmp/`，不提交。可用 `--reference-repo <旧实验仓库>` 额外比对历史600维向量及新版分词样本。
-
-交付验证的实际结果记录于本目录 `word2vec_validation.json`。它只验证embedding和接口，不重新训练analytics；依赖全部来自现有requirements.txt，无新增第三方依赖。
+自检脚本仅保留在交付者本地，不属于仓库交付文件。正常使用和重新训练按上文及现有 `experiments/embedding_pipeline.ipynb` 执行，无需运行额外检查脚本。验证记录不代表最新共享管线的analytics评分。
