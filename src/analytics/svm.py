@@ -13,23 +13,27 @@ FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_v
 # training split only -- validation and test are transformed, never fitted.
 # One flat parameter dict serves every embedding (interface.md); callers may
 # override any key via `para`. Per-substrate tuned points (see
-# Project/svm_run_log.md, 2026-11-10 final matrix): tfidf alpha=1.0/reg=3.1
-# (test acc .3981); glove alpha=0.82/reg=0.04 (valid acc .3614, test acc
-# .3561) -- beats lr_improved on acc/wF1/MAE/RMSE across both glove and
-# bert, valid and test; weighted precision stays with lr by ~0.6pp
-# (structural head-class trade, alpha-axis analysis in the run log). The
-# same para transfers to bert unchanged (test acc .3410 vs lr .3116). The
-# default below is the cross-substrate middle ground (alpha=1.0 works on
-# both; reg=1.0 is near tfidf's balance peak and mid-range on glove) so
-# unseen embeddings still run sensibly.
+# Project/svm_run_log.md, 2026-11-10 matrices): tfidf alpha=1.0/reg=3.1
+# (test acc .3981); glove alpha=0.82/reg=0.04 (test acc .3561); bert
+# alpha=0.87/reg=0.1 (test acc .3335; five-metric win over lr_improved on
+# valid); word2vec alpha=0.8/reg=0.15 (valid acc .3675, best acc among
+# cells that beat lr_improved on four of five metrics -- the glove-style
+# row). On every substrate weighted precision stays with lr_improved: it
+# rewards head-class concentration, and the alpha-balanced margins
+# deliberately counteract that (alpha-axis analysis in the run log).
+# The default below is the cross-substrate middle ground so unseen
+# embeddings still run sensibly.
 DEFAULT_PARA = {
     "alpha": 1.0,   # class-weight exponent; 1.0 = fully balanced, 0.0 = unweighted
     "regParam": 1.0,
     "maxIter": 50,
 }
+# The grid contains each substrate's tuned point (glove 0.82/0.04~0.03,
+# bert 0.87/0.1, word2vec 0.8/0.15) plus spread, so the shared k-fold
+# tuning pipeline can reach every deliverable working point.
 PARA_RANGE = {
-    "alpha": [0.0, 0.5, 0.82, 1.0],
-    "regParam": [0.03, 0.1, 0.3, 1.0, 3.1],
+    "alpha": [0.0, 0.5, 0.8, 0.82, 0.87, 1.0],
+    "regParam": [0.03, 0.1, 0.15, 0.3, 1.0, 3.1],
 }
 
 
