@@ -1,0 +1,15 @@
+{
+  "max_length": 256,
+  "dimension": 512,
+  "pooling": "layers_concat",
+  "normalize": true,
+  "postprocessing": {
+    "file": "postprocess.npz",
+    "method": "PCA whitening with scale floor and L2 normalization",
+    "input_dimension": 1024,
+    "fit_rows": 70021,
+    "fit_corpus_sha256": "50a09266d90490101f21c387919a9be34caa980f7b9196819063a764316069bf",
+    "scale_floor": 0.0025188664574958795,
+    "explained_variance_fraction": 0.9991805115315332
+  }
+}

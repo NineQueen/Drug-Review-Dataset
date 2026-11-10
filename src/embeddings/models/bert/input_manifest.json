@@ -1,0 +1,17 @@
+{
+  "corpus_sha256": "50a09266d90490101f21c387919a9be34caa980f7b9196819063a764316069bf",
+  "validation_sha256": "80a33fbb6066d6f551d92d81ba3b20b75a0b8d6d8a18d786cefd3afacb648b8b",
+  "provenance": {
+    "selection_protocol": "train_internal_group_holdout_v1",
+    "validation_source": "internal_training_holdout",
+    "training_pool_rows": 77800,
+    "training_rows": 70021,
+    "validation_rows": 7779,
+    "training_pool_ids_sha256": "422d5944959f30955afde593535e129f52f602c2c1c05216ccf5b5a70ca294d9",
+    "training_pool_corpus_sha256": "5e720514c7aa7e6332f9df2828e2345e92674d5161075f9c34be0e653680954a",
+    "training_ids_sha256": "e34c030db9cd871449650f88780156c836e38fa259258c3bdf5f0910895f3d65",
+    "validation_ids_sha256": "114aacb150fd18f0df738f4528161fd0a791192a290e4c176e480df88e38ccee",
+    "split_grouping": "NFKC/HTML/case/whitespace normalized text hash",
+    "external_source": null
+  }
+}
