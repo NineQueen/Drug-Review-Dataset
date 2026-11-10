@@ -13,18 +13,22 @@ FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_v
 # training split only -- validation and test are transformed, never fitted.
 # One flat parameter dict serves every embedding (interface.md); callers may
 # override any key via `para`. Per-substrate tuned points (see
-# Project/svm_run_log.md): tfidf alpha=1.0/reg=3.1 (valid .3955, test acc
-# .3981); glove alpha=0.9/reg=0.04 (valid five-metric dominance over
-# lr_improved, test acc .3283). The default below is the cross-substrate
-# middle ground (alpha=1.0 works on both; reg=1.0 is near tfidf's balance
-# peak and mid-range on glove) so unseen embeddings still run sensibly.
+# Project/svm_run_log.md, 2026-11-10 final matrix): tfidf alpha=1.0/reg=3.1
+# (test acc .3981); glove alpha=0.82/reg=0.04 (valid acc .3614, test acc
+# .3561) -- beats lr_improved on acc/wF1/MAE/RMSE across both glove and
+# bert, valid and test; weighted precision stays with lr by ~0.6pp
+# (structural head-class trade, alpha-axis analysis in the run log). The
+# same para transfers to bert unchanged (test acc .3410 vs lr .3116). The
+# default below is the cross-substrate middle ground (alpha=1.0 works on
+# both; reg=1.0 is near tfidf's balance peak and mid-range on glove) so
+# unseen embeddings still run sensibly.
 DEFAULT_PARA = {
     "alpha": 1.0,   # class-weight exponent; 1.0 = fully balanced, 0.0 = unweighted
     "regParam": 1.0,
     "maxIter": 50,
 }
 PARA_RANGE = {
-    "alpha": [0.0, 0.5, 0.9, 1.0],
+    "alpha": [0.0, 0.5, 0.82, 1.0],
     "regParam": [0.03, 0.1, 0.3, 1.0, 3.1],
 }
 
