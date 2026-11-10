@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "config": {
+    "vector_size": 300,
+    "window_size": 5,
+    "min_count": 5,
+    "max_iter": 10,
+    "step_size": 0.025,
+    "seed": 42,
+    "num_partitions": 1,
+    "max_sentence_length": 1000,
+    "pooling": "meanmax"
+  },
+  "output_dimension": 600,
+  "input_column": "words",
+  "training_corpus": "self.train only"
+}
