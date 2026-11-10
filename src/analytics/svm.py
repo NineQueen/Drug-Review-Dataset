@@ -11,37 +11,35 @@ FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_v
 # Interface contract: analytics reads only `embedding` plus the encoder's
 # features (no words columns, nothing derived from the label) and fits on the
 # training split only -- validation and test are transformed, never fitted.
-# Provenance in Project/svm_run_log.md (2026-11-08).
-
-tfidf_para = {
+# One flat parameter dict serves every embedding (interface.md); callers may
+# override any key via `para`. Per-substrate tuned points (see
+# Project/svm_run_log.md): tfidf alpha=1.0/reg=3.1 (valid .3955, test acc
+# .3981); glove alpha=0.9/reg=0.04 (valid five-metric dominance over
+# lr_improved, test acc .3283). The default below is the cross-substrate
+# middle ground (alpha=1.0 works on both; reg=1.0 is near tfidf's balance
+# peak and mid-range on glove) so unseen embeddings still run sensibly.
+DEFAULT_PARA = {
     "alpha": 1.0,   # class-weight exponent; 1.0 = fully balanced, 0.0 = unweighted
-    "regParam": 3.1,
+    "regParam": 1.0,
+    "maxIter": 50,
 }
-glove_para = {
-    # Tuned on the glove cache (2026-11-09, svm_glove_plan.md + dominance
-    # sweep): the balanced-side point that beats lr_improved on ALL five
-    # metrics on valid (acc .3341/wP .3664/wF1 .3479/MAE 1.900/RMSE 2.940 vs
-    # lr .3237/.3583/.3376/1.974/3.034); the dominance window is alpha 0.85-
-    # 0.95 (left edge fails weighted precision, right edge loses accuracy).
-    # The acc-focused point alpha=0.2/reg=0.04 (valid acc 0.4017) is
-    # documented in Project/svm_run_log.md as the accuracy-line alternative.
-    "alpha": 0.9,
-    "regParam": 0.04,
-}
-
-para_list = {
-    "tfidf": tfidf_para,
-    "glove": glove_para,
+PARA_RANGE = {
+    "alpha": [0.0, 0.5, 0.9, 1.0],
+    "regParam": [0.03, 0.1, 0.3, 1.0, 3.1],
 }
 
 
 @AnalyticsModel.register("svm")
-def svm(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
-    # `rating_p1` is 0-9. Manual One-vs-Rest: Spark's OneVsRest drops
-    # weightCol before fitting each sub-classifier, so each binary task
-    # applies balanced weights w = (n / (2 * n_class)) ** alpha itself and
-    # the prediction is the argmax over the 10 margins.
-    para = para_list[self.embedding_model]
+def svm(self: AnalyticsModel, para: dict | None = None) -> tuple[DataFrame, DataFrame, DataFrame]:
+    # `rating_p1` is 0-9. Passed keys override DEFAULT_PARA.
+    # Manual One-vs-Rest: Spark's OneVsRest drops weightCol before fitting
+    # each sub-classifier, so each binary task applies balanced weights
+    # w = (n / (2 * n_class)) ** alpha itself and the prediction is the
+    # argmax over the 10 margins.
+    params = {
+        **DEFAULT_PARA,
+        **(para or {}),
+    }
     train_df, valid_df, test_df = self._feature_transform(FEATURES)
     # Materialize the caches once: the 10 concurrent fits below each re-read
     # these frames and would otherwise recompute the full lineage per fit.
@@ -61,15 +59,15 @@ def svm(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
         ).withColumn(
             "bin_weight",
             F.when(F.col("bin_label") == 1,
-                   F.lit((n / (2.0 * n_pos)) ** para["alpha"]))
-             .otherwise(F.lit((n / (2.0 * n_neg)) ** para["alpha"])),
+                   F.lit((n / (2.0 * n_pos)) ** params["alpha"]))
+             .otherwise(F.lit((n / (2.0 * n_neg)) ** params["alpha"])),
         )
         return LinearSVC(
             featuresCol="features",
             labelCol="bin_label",
             weightCol="bin_weight",
-            maxIter=50,
-            regParam=para["regParam"],
+            maxIter=params["maxIter"],
+            regParam=params["regParam"],
             standardization=True,
         ).fit(binary)
 
@@ -93,8 +91,13 @@ def svm(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
         return scored.withColumn("prediction", prediction.cast("double"))
 
     columns = ["uniqueID", "rating", "prediction"]
-    return (
+    predictions = (
         _predict(train_df).select(*columns),
         _predict(valid_df).select(*columns),
         _predict(test_df).select(*columns),
     )
+    # Release the assembled feature caches (base lifecycle contract); the
+    # prediction frames above are lazy and read from the fitted models, so
+    # they materialize independently of this cache.
+    self.release_features()
+    return predictions
