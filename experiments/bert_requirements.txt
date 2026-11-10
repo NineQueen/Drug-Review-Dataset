@@ -10,3 +10,4 @@ safetensors>=0.4.3,<1
 pyarrow>=18
 scikit-learn>=1.5,<2
 ipykernel>=6,<8
+

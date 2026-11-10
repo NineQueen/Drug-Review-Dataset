@@ -19,7 +19,9 @@ class AnalyticsModel:
     shared runner calls `registry[key](instance)` and therefore uses the
     default. A tuning call may pass another flat dict with the same keys. The required
     baseline uses `baseline_register`, takes no parameter dict, and is called as
-    `instance.baseline()`. The registry key must not contain `__`.
+    `instance.baseline()`. Weighted LR uses `improved_baseline_register` and is
+    called as `instance.improved_baseline()`. Neither is in `registry`. The
+    registry key must not contain `__`.
 
     Readable inputs are `embedding` and the already encoded non-text columns.
     Do not read text columns or build label-derived features. Fit only on the
@@ -37,8 +39,9 @@ class AnalyticsModel:
     frames. `weight`, when a model uses it, exists only on the training split.
     """
 
-    registry = {}   
+    registry = {}
     baseline = None
+    improved_baseline = None
 
     def __init__(self,embedding_model:str, df_train: DataFrame,df_valid:DataFrame, df_test: DataFrame) -> None:
         self.embedding_model = embedding_model
@@ -81,6 +84,15 @@ class AnalyticsModel:
             # The notebook calls `instance.baseline()`.
             setattr(cls, function.__name__, function)
             cls.baseline = function
+            return function
+        return decorator
+
+    @classmethod
+    def improved_baseline_register(cls):
+        def decorator(function):
+            # The notebook calls `instance.improved_baseline()`.
+            setattr(cls, function.__name__, function)
+            cls.improved_baseline = function
             return function
         return decorator
 

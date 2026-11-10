@@ -7,8 +7,8 @@ from src.embeddings.base import EmbeddingModel
 from src.paths import EMBEDDING_MODELS_DIR
 
 
-@EmbeddingModel.train_register("tfidf")
-def tfidf_train(self: EmbeddingModel,model_name: str = "tfidf") -> None:
+@EmbeddingModel.baseline_train_register()
+def tfidf_train(self: EmbeddingModel, model_name: str = "baseline") -> None:
     # Fit on `self.train` only. Downstream models read the column `embedding`.
     pipeline = Pipeline(stages=[
         CountVectorizer(
@@ -25,8 +25,8 @@ def tfidf_train(self: EmbeddingModel,model_name: str = "tfidf") -> None:
     tfidf_model.write().overwrite().save(str(model_path))
 
 
-@EmbeddingModel.predict_register("tfidf")
-def tfidf_predict(self: EmbeddingModel, model_name: str = "tfidf") -> tuple[DataFrame, DataFrame, DataFrame]:
+@EmbeddingModel.baseline_predict_register()
+def tfidf_predict(self: EmbeddingModel, model_name: str = "baseline") -> tuple[DataFrame, DataFrame, DataFrame]:
     tfidf_model = PipelineModel.load(str(EMBEDDING_MODELS_DIR / model_name))
     
     return (

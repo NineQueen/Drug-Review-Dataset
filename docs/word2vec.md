@@ -1,8 +1,8 @@
-# Word2Vec embedding 交接
+# Word2Vec
 
-注册名为 `word2vec`，兼容当前 `EmbeddingModel(train, valid, test, phrases=None)` 和现有共享循环。只读取完整、未词干化的 `words`，只在 `self.train` 拟合，不使用 WebMD、短语或停用词过滤。输入的公共文本列不会被修改。
+注册名是 `word2vec`。它读取未词干化的 `words`，只在 `self.train` 上拟合，不使用 WebMD、短语或停用词过滤，也不改公共文本列。
 
-## 默认方案
+## 默认配置
 
 | 配置 | 默认值 |
 |---|---|
@@ -16,56 +16,29 @@
 | max_sentence_length | 1000 |
 | pooling | meanmax |
 
-词模型300维；评论向量为平均和逐坐标最大值各300维的拼接，共600维。均值分母是全部输入token数，包括OOV；OOV贡献0，不参与最大值，避免把负的最大值截成0。重复词重复计入。空/全部OOV输入输出定长零向量，不额外归一化。超过序列上限的评论由Spark在训练时分块；预测聚合整条评论。
+词向量 300 维。`meanmax` 把全部输入 token 的平均和已知词的逐坐标最大值拼成 600 维；均值分母包括 OOV，OOV 对均值贡献 0，不参与最大值。空评论和全部 OOV 的评论输出定长零向量。`p01` 是 `vector_size` 维平均。超过 `max_sentence_length` 的评论在训练时由 Spark 分块；预测聚合整条评论。
 
-## 重新训练默认配置
-
-在现有 `experiments/embedding_pipeline.ipynb` 选择 `embedding_name = "word2vec"`，不改公共循环即可运行。模型模块不创建SparkSession，入口按README创建会话。
+在 `experiments/embedding_pipeline.ipynb` 里设 `embedding_name = "word2vec"`。`REBUILD = False` 只跳过输入重建，不跳过训练。要直接用已交付模型时，保留会话和模型实例，跳过 `word2vec_train()`，调用 `word2vec_predict()`。
 
 ```python
-from src.embeddings import EmbeddingModel
-
 model = EmbeddingModel(df_train, df_valid, df_test)
-model.word2vec_train()  # 真正重新拟合，覆盖自己的word2vec模型目录
+model.word2vec_train()
 train_embedding, valid_embedding, test_embedding = model.word2vec_predict()
 ```
 
-输出由基类裁剪为analytics约定列，并保留ID、标签和样本；`embedding` 是Spark ML `VectorUDT`。不依赖预测输出中仍有 `words` 或 `review`。
-
-`REBUILD=False`只控制输入缓存，不会跳过训练。若要直接使用交付模型，在个人入口保留模型实例与Spark初始化，跳过 `word2vec_train()`，直接执行 `word2vec_predict()`。共享主入口默认仍先训练。
-
-## 自定义配置
-
-训练函数支持 `config` 字典，只覆盖提供的项目；原默认字典和传入字典都不被修改。
+`config` 只覆盖给出的键，不修改默认字典。可覆盖的键就是上表九项。未知键、非法类型、非正的训练长度或轮数、非法学习率、非法 `pooling` 会报错。`min_count` 可以是 0。`seed` 是 64 位整数。实验用单独的 `model_name`。
 
 ```python
 model.word2vec_train(
     model_name="word2vec_custom",
-    config={"vector_size": 200, "window_size": 10,
-            "max_iter": 20, "pooling": "meanmax"},
+    config={"vector_size": 200, "window_size": 10, "max_iter": 20, "pooling": "meanmax"},
 )
-custom_train, custom_valid, custom_test = model.word2vec_predict("word2vec_custom")
-# 每条向量400维；其他参数沿用默认值。
 ```
 
-可覆盖的键就是上表九项。`pooling`支持 `p01`（d维原生平均）与 `meanmax`（2d维）；拼错键、错误类型、非正训练长度/轮数、非法学习率或聚合方式明确报错。`min_count`允许非负整数，seed为64位整数。新模型名使用小写字母、数字和单下划线，不含路径分隔符或 `__`，实验请使用独立名字。
+实际配置写入模型目录的 `embedding_config.json`。预测只接收 `model_name`，并读取这份保存配置。没有这个文件时不回退到当前代码默认值。
 
-实际完整配置写入模型目录的 `embedding_config.json`。预测只接收 `model_name`，自动读取该模型的保存配置，不需要新版预测包装器传递额外kwargs；以后修改代码默认值也不会改变已有模型的聚合方式。该文件必须随模型交付，没有静默回退到当前默认值的分支。
+## 当前交付
 
-## 拟合产物
+`src/embeddings/models/word2vec/` 含 Spark 模型、`embedding_config.json` 和 `provenance.json`。目录里的 `.gitattributes` 对该目录设置 `-text`。原生 Spark 文件按字节复制自 `w2v_t20261108_225759_d300`。`provenance.json` 记录当时的输入指纹和文件 SHA256：训练集 77,800 条、6,702,823 个 token、词表 14,785，来自提交 `46b1a03`。那次验证用的是当时的不加权 logistic baseline，accuracy 40.7284%，weighted F1 0.355288，MAE 1.739302，RMSE 2.938868。这是旧输入上的记录。重新训练会更新模型和 `embedding_config.json`，不沿用旧的 `provenance.json`。
 
-`src/embeddings/models/word2vec/` 包含原生Spark模型、`embedding_config.json` 和 `provenance.json`。这次交付的原生Spark文件按字节复制自 `w2v_t20261108_225759_d300`，不是重新训练得到的替代品。
-
-历史训练：提交 `46b1a03` 对应原训练集77,800条、6,702,823个token，词表14,785。原模型Spark4.2.0，Python3.12.9/Java17环境；最新README要求的Java21兼容检查另见验证记录。输入Parquet指纹和原生模型文件SHA256见 `provenance.json`。
-
-历史验证集由既有不加权 `lr_baseline` 联合文本与元数据评估：accuracy **40.7284%**，weighted F1 **0.355288**，MAE **1.739302**，RMSE **2.938868**。这是旧提交与固定输入下的记录，不是新共享管线重建后的评分，不能保证重训逐位一致或稳定超过其他模型。没有在本交付中加入analytics代码、分类器文件或预测表。
-
-重新训练会更新原生模型和实际配置，旧模型的 `provenance.json` 不会被沿用。若共享清洗、输入或参数改变，需要更新对应向量和下游结果。公共新增停用词保护不直接改变本模型读取的 `words`，但输入版本仍需核对。
-
-模型目录内 `.gitattributes` 对该目录设置 `-text`，保留Spark元数据、Parquet及Hadoop CRC的原始字节。提交其他新模型时应保留训练函数生成的同类属性文件，不手动删减模型内部文件。
-
-## 验证记录
-
-交付前已在 Python3.12 / PySpark4.2 / Java21 环境完成接口与小样本检查，结果见 `word2vec_validation.json`。检查覆盖注册、默认600维、自定义配置、配置持久化、仅train拟合词表、空/OOV输入、meanmax计算及Parquet保存加载，并比对了历史向量。
-
-自检脚本仅保留在交付者本地，不属于仓库交付文件。正常使用和重新训练按上文及现有 `experiments/embedding_pipeline.ipynb` 执行，无需运行额外检查脚本。验证记录不代表最新共享管线的analytics评分。
+交付前的接口和小样本检查记在 `docs/word2vec_validation.json`。自检脚本不在仓库里。重新训练用 `experiments/embedding_pipeline.ipynb`。这份记录不是当前共享管线的分类器评分。

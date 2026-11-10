@@ -30,8 +30,8 @@ def lr_baseline(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
         lr_model.transform(test_df).select(*columns),
     )
 
-@AnalyticsModel.register("lr_improved")
-def lr_improved(
+@AnalyticsModel.improved_baseline_register()
+def improved_baseline(
     self: AnalyticsModel,
     para: dict | None = None,
 ) -> tuple[DataFrame, DataFrame, DataFrame]:

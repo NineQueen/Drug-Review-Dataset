@@ -21,6 +21,9 @@ class EmbeddingModel:
 
     train_registry = {}
     predict_registry = {}
+    # TF-IDF is the baseline representation and stays out of the two registries.
+    baseline_train = None
+    baseline_predict = None
     # Text columns and vectorizer intermediates stay on `self.train` for fitting.
     # Predict output keeps the label, the training weight, and the encoded model inputs.
     OUTPUT_COLUMNS = (
@@ -120,6 +123,30 @@ class EmbeddingModel:
             predict.__name__ = function.__name__
             setattr(cls, function.__name__, predict)
             cls.predict_registry[name] = predict
+            return predict
+        return decorator
+
+    @classmethod
+    def baseline_train_register(cls):
+        def decorator(function):
+            setattr(cls, function.__name__, function)
+            cls.baseline_train = function
+            return function
+        return decorator
+
+    @classmethod
+    def baseline_predict_register(cls):
+        def decorator(function):
+            def predict(self, model_name: str = "baseline"):
+                train_df, valid_df, test_df = function(self, model_name)
+                return (
+                    cls._model_columns(train_df),
+                    cls._model_columns(valid_df),
+                    cls._model_columns(test_df),
+                )
+            predict.__name__ = function.__name__
+            setattr(cls, function.__name__, predict)
+            cls.baseline_predict = predict
             return predict
         return decorator
 

@@ -1,52 +1,35 @@
-consultation总结：  
-1. improved baseline是怎么做的，还能怎么提升  
-2. 加权的问题怎么做，非平衡数据集怎么处理。  
-3. embedding，自己训练：word2vec，bert，glove  
-4. analytics：svm，树：xgb，神经网络：MLP  
-5. 怎么提升模型的表现（讲故事，通用方法，不是某一个具体模型，不然不好讲）（让AI把思维链写下来）  
-    1. text feature engineering：相对于纯tokenizer，我们干了。。。。（凯文）  
-    2. 加权处理非平衡  
-    3. 正则化（如有）  
-    4. 调参数（记录提升数据）  
-    5. Stacking（模型融合），画一个模型的情况图  
-6. 讲故事：  
-    1. 怎么提升的（每一步）  
-    2. 数据集和模型本身有什么关系  
-    3. 对模型的理解  
-  
-  
-  
-  
-  
-下一步：**必须留痕，所有数据必须记录，来源注明**  
-1. 6个人，同时完成模型的代码（完全不用交叉的） 项目文件里，有一个实验文件夹，在那里创建自己对应的训练脚本（experiment里有pipeline，复制然后用自己的，不要交叉着用），记得pull和push。  
-    1. embedding（纯training data, training data + dataset, 下载预训练模型然后根据数据集微调的），必须尽快敲定尽快完工。train: 可以不注册（你在外面先训练好），如果注册，就会在Jupyter notebook上跑然后把模型参数存在指定文件上。predict：必须注册，从你的存的模型里读，然后进行预测，接口都写好了。  
-        1. Bert（微调）：fyc  
-        2. Word2Vec（重新训）：lyt  
-        3. glove（重新训）：zhx  
-    2. Analytics（ 3 * 3，每个模型都要接受对应的所有embedding模型，结构上也写好了，不用单独融合）正则化，非平衡（也得记录提升空间）约定：train和predict不分开！！！一起训练，不存模型（暂时），我们考虑跑k折，不好存一个一个的模型  
-        1. 线性SVM：zty  
-        2. XGB（这种森林类型的模型，都可以，lgb，cat）：yyt  
-        3. MLP（如果可以用一点高级的方法，可以写进去，然后就算模型提升），不计入调参，负责人要记录好模型的提升路径：zkw  
-2. 调参（3 embedding * 2 analytics）：  
-    1. 用库，网格，贝叶斯。  
-    2. 记录提升空间！！！  
-    3. 一个组合模型对应一个参数，管理好  
-3. stacking，融合，验证，测试  
-4. 画图（每个人画点好图，使用scorer的接口画）  
-  
-故事线：  
-1. Baseline text feature engineering + tfidf + lr  
-2. text feature engineering + tfidf + lr (weight, L2)  
-3.  3 * 3 模型融合  
-    1. 各自模型，从空模型，到加了权重，加了正则化，加了。。。之后的提升（落实到analytics个人，要出流程对比）  
-4. 调参  
-5. Stacking融合，查看是否有效果  
-  
-timeline：  
-11月11日：模型敲定。embedding（模型训练完成）：非大变动不改了。analytics：代码敲定，留足接口，然后把正则化，非平衡做了（记录提升空间），yyt：树模型思路是什么。  
-11月12日：开始调参（其实就是写一个范围，让计算机自己跑，然后跑完记录，就可以了，我会上传一个调参脚本，大家都用那个跑就可以），最佳参数自己留着。记录调参的提升空间（每个人都要记录对应的）  
-11月12日：可视化  
-11月14日：怎么说都结束了。最后整合，k折，stacking zhx自己来干。最后汇总结果，我们可以开个会，然后看看1.要不要改其他的 2.讲故事，数据汇总，代码基本上结束。  
-11月15日：小修之后，所有代码确定，开始写report，开始写ppt。  
-11月22日：所有都得交。  
+# 进度
+
+当前代码里的表示是 word2vec、BERT、GloVe，另有单独的 TF-IDF baseline。分类器是不加权 LR、加权 LR、SVM 和 random forest。MLP 和 stacking 仍是后面的工作，代码里还没有。
+
+## 分工
+
+每人只改自己的模型，并在 `experiments/` 里用自己的入口。embedding 的 train 和 predict 都要注册：train 拟合并保存模型，predict 从该目录变换三份数据。analytics 用一个函数拟合并返回预测，不另存分类器。
+
+- BERT：fyc
+- Word2Vec：lyt
+- GloVe：zhx
+- 线性 SVM：zty
+- random forest：yyt
+- MLP：zkw，尚未接入
+- 最后的 K 折和 stacking：zhx
+
+TF-IDF 不进 embedding 循环。`tfidf` 只配 `baseline()`，`tfidf_improved` 只配 `improved_baseline()`。
+
+## 要留下来的比较
+
+1. 只做分词的 TF-IDF + 不加权 LR。
+2. 文本特征后的 TF-IDF + 加权 LR。
+3. 各分类器自己的提升：权重、正则，以及实际跑过的参数。每一步记下数据和来源。
+4. 调参前后的 test 分数。
+5. stacking 做完之后，再看它有没有增益。
+
+调参用 `experiments/para_tuning/para_tuning_pipeline.ipynb`。一个 embedding 和分类器的组合对应一份参数，写到 `{EMBEDDING_MODEL}_{ANALYTICS_MODEL}.json`。图用 `Scorer` 的结果。
+
+## 日期
+
+- 11 月 11 日：模型敲定。embedding 训练完成；analytics 接口固定，权重和正则的对比留有记录。
+- 11 月 12 日：开始调参，并做可视化。
+- 11 月 14 日：汇总结果，决定还要不要改模型，并收齐讲故事用的数据。
+- 11 月 15 日：代码冻结，开始写 report 和 ppt。
+- 11 月 22 日：提交。

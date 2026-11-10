@@ -20,17 +20,15 @@ def _collapse_rare_drugs(df: DataFrame, frequent_drugs: DataFrame) -> DataFrame:
     )
 
 
-def encoder(df_train: DataFrame,df_valid:DataFrame, df_test: DataFrame) -> tuple[DataFrame, DataFrame, DataFrame]:
-    # Fit on the training split only. An unseen validation or test value is kept rather than rejected.
+def encoder(df_train: DataFrame, *frames: DataFrame) -> tuple[DataFrame, ...]:
+    """Fit on the first frame and transform that frame plus every later frame."""
     frequent_drugs = (
         df_train.groupBy("drugName")
         .count()
         .filter(F.col("count") >= _MIN_DRUG_COUNT)
         .select("drugName", F.lit(True).alias("_frequent"))
     )
-    df_train = _collapse_rare_drugs(df_train, frequent_drugs)
-    df_valid = _collapse_rare_drugs(df_valid, frequent_drugs)
-    df_test = _collapse_rare_drugs(df_test, frequent_drugs)
+    frames = tuple(_collapse_rare_drugs(frame, frequent_drugs) for frame in (df_train, *frames))
 
     condition_idx = StringIndexer(
         inputCol="condition",
@@ -53,9 +51,5 @@ def encoder(df_train: DataFrame,df_valid:DataFrame, df_test: DataFrame) -> tuple
         handleInvalid="keep",
     )
     pipeline = Pipeline(stages=[condition_idx, condition_vec, drugName_idx, drugName_vec])
-    encoder_model = pipeline.fit(df_train)
-    return (
-        encoder_model.transform(df_train).cache(), 
-        encoder_model.transform(df_valid).cache(),
-        encoder_model.transform(df_test).cache()
-    )
+    encoder_model = pipeline.fit(frames[0])
+    return tuple(encoder_model.transform(frame).cache() for frame in frames)

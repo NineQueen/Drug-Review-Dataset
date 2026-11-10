@@ -21,5 +21,6 @@ ANALYTIC_MODELS_DIR = ROOT / "src" / "analytics" / "models"
 SPLIT_DIR = ROOT / "data" / "processed" / "split"
 EMBEDDING_DIR = ROOT / "data" / "processed" / "embeddings"
 PREDICTION_DIR = ROOT / "data" / "processed" / "predictions"
+TEMP_DIR = ROOT / "data" / "processed" / "temp"
 
 PARAMETER_DIR = ROOT / "data" / "parameter"

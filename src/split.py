@@ -18,19 +18,17 @@ def _bucket_edges(ratios: Sequence[int]) -> list[int]:
     assigned = 0
     for index, ratio in enumerate(ratios):
         width = _BUCKETS - assigned if index == len(ratios) - 1 else ratio * _BUCKETS // total
-        if width <= 0:
-            raise ValueError("each ratio must receive at least one hash bucket")
         assigned += width
         edges.append(assigned)
     return edges
 
 
-def split_and_weight(
+def split(
     df: DataFrame,
     seed: int,
     ratios: Sequence[int] = (7, 1, 2),
 ) -> tuple[DataFrame, ...]:
-    """Hash-split one frame per ratio and attach class weights to the first frame.
+    """Hash-split one cached frame per ratio.
 
     The length of `ratios` is the number of parts. `(8, 2)` is an 80/20 split and
     `(7, 1, 2)` is the default train/validation/test split. Bucket counts that do
@@ -43,15 +41,24 @@ def split_and_weight(
         df.filter((bucket >= start) & (bucket < end)).cache()
         for start, end in zip(edges, edges[1:])
     ]
-    # `weight` = n / (k * count), joined onto the first split only.
-    n = frames[0].count()
-    for frame in frames[1:]:
+    for frame in frames:
         frame.count()
-    k = frames[0].select("rating").distinct().count()
+    return tuple(frames)
+
+
+def weight(df: DataFrame) -> DataFrame:
+    """Attach `weight = n / (k * class_count)` and return a cached frame.
+
+    The input cache is released after the weighted frame has been counted.
+    """
+    n = df.count()
+    k = df.select("rating").distinct().count()
     rating_weight = (
-        frames[0].groupBy("rating").count()
+        df.groupBy("rating").count()
         .withColumn("weight", F.lit(n) / (F.lit(k) * F.col("count")))
         .select("rating", "weight")
     )
-    frames[0] = frames[0].join(rating_weight, "rating", "left").cache()
-    return tuple(frames)
+    weighted = df.join(rating_weight, "rating", "left").cache()
+    weighted.count()
+    df.unpersist(blocking=True)
+    return weighted

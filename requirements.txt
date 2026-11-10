@@ -1,8 +1,22 @@
+# Python 3.12. Upper bounds are the combinations that resolve together.
 pyspark==4.2.0
-numpy
-pandas>=2.2,<3
-matplotlib
-nltk
-rouge-score
+numpy>=2.2,<2.8
+pandas>=2.3.3,<3
+python-dateutil>=2.8.2,<3
+pyarrow>=18,<26
+scipy>=1.15,<1.19
+matplotlib>=3.8
+nltk>=3.9,<4
+rouge-score>=0.1.2
 gensim==4.4.0
 glovpy==0.2.0
+scikit-learn>=1.5,<2
+threadpoolctl>=3.5
+
+# BERT. transformers 4.57 requires huggingface-hub<1 and tokenizers 0.22.
+torch==2.9.1
+transformers==4.57.6
+tokenizers>=0.22.2,<0.23
+accelerate==1.15.0
+safetensors>=0.4.3,<1
+huggingface-hub>=0.34,<1

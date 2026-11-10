@@ -37,6 +37,7 @@ def glove_predict(self: EmbeddingModel, model_name:str = "glove") -> tuple[DataF
     token_vectors = {word:keyed.get_vector(word) for word in keyed.index_to_key}
     broadcast_vectors = self.train.sparkSession.sparkContext.broadcast(token_vectors)
     dimension = int(keyed.vector_size)
+    del keyed, token_vectors
 
     @F.udf(VectorUDT())
     def review_vector(tokens):
@@ -56,9 +57,16 @@ def glove_predict(self: EmbeddingModel, model_name:str = "glove") -> tuple[DataF
     
     def transform(df: DataFrame) -> DataFrame:
         return df.withColumn("embedding", review_vector(F.col("words_nostop")))
-    
-    return (
-        transform(self.train_phrase),
-        transform(self.valid_phrase),
-        transform(self.test_phrase),
+
+    cached = tuple(
+        frame.cache()
+        for frame in (
+            transform(self.train_phrase),
+            transform(self.valid_phrase),
+            transform(self.test_phrase),
+        )
     )
+    for frame in cached:
+        frame.count()
+    broadcast_vectors.unpersist(blocking=True)
+    return cached

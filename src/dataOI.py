@@ -1,4 +1,5 @@
 import json
+import warnings
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
@@ -7,10 +8,68 @@ from pyspark.sql.types import DateType, IntegerType, StringType, StructField, St
 import src.paths as paths
 
 
+class CacheScope:
+    """Written By AI: Release DataFrame caches created inside a `with` block.
+
+    Exit calls DataFrame.unpersist(), which drops the RDD and the SQL cache
+    registration together.
+    """
+
+    def __init__(self, spark: SparkSession) -> None:
+        self.spark = spark
+        self._before: set[int] = set()
+
+    def __enter__(self) -> "CacheScope":
+        self._before = self._cached_plan_ids()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        self._release_new_frames()
+        return False
+
+    def _cached_data(self):
+        manager = self.spark._jsparkSession.sharedState().cacheManager()
+        field = manager.getClass().getDeclaredField("cachedData")
+        field.setAccessible(True)
+        return field.get(manager)
+
+    def _cached_plan_ids(self) -> set[int]:
+        cached = self._cached_data()
+        found: set[int] = set()
+        for index in range(int(cached.size())):
+            found.add(self._plan_id(cached.apply(index).plan()))
+        return found
+
+    def _plan_id(self, plan) -> int:
+        return int(self.spark._jvm.java.lang.System.identityHashCode(plan))
+
+    def _release_new_frames(self) -> None:
+        cached = self._cached_data()
+        plans = []
+        for index in range(int(cached.size())):
+            plan = cached.apply(index).plan()
+            if self._plan_id(plan) not in self._before:
+                plans.append(plan)
+        session = self.spark._jsparkSession
+        dataset = self.spark._jvm.org.apache.spark.sql.classic.Dataset
+        for plan in plans:
+            with warnings.catch_warnings():
+                warnings.filterwarnings(
+                    "ignore",
+                    message="DataFrame constructor is internal",
+                    category=UserWarning,
+                )
+                frame = DataFrame(dataset.ofRows(session, plan), self.spark)
+            frame.unpersist(blocking=True)
+
+
 class DataOI:
     def __init__(self) -> None:
         # The notebook creates the only session. This call does not start one.
         self.spark = SparkSession.getActiveSession()
+
+    def scope(self) -> CacheScope:
+        return CacheScope(self.spark)
 
     @staticmethod
     def unpersist(*frames: DataFrame) -> None:
