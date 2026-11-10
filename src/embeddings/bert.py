@@ -265,6 +265,9 @@ def _fit_texts(train_texts, valid_texts, directory, config, provenance, resume=F
                          "tokenizer_config.json", "special_tokens_map.json", "vocab.txt",
                          "encoder/config.json", "encoder/model.safetensors"))
         if completed:
+            completion = json.loads((directory / "completion.json").read_text(encoding="utf-8"))
+            completed = completion.get("status") == "complete"
+        if completed:
             representation = json.loads((directory / "embedding_config.json").read_text(encoding="utf-8"))
             if representation.get("postprocessing"):
                 completed = (directory / representation["postprocessing"]["file"]).is_file()
@@ -432,6 +435,9 @@ def _load_encoder(directory, device="auto"):
 
 def _fit_representation(directory, fit_texts, config):
     """Fit sentence-vector postprocessing on the MLM fitting rows only."""
+    directory = Path(directory)
+    # Refitting invalidates completion until every inference artifact is saved.
+    (directory / "completion.json").unlink(missing_ok=True)
     multipliers = {"mean": 1, "last2_mean": 1, "all_mean": 1, "max": 1,
                    "mean_max": 2, "embedding_last_mean": 2, "segmented_mean": 3,
                    "layers_concat": config.num_hidden_layers,
@@ -548,7 +554,12 @@ def _bert_encode_frames(frames, model_name, *, batch_size=128, device="auto"):
     from pyspark.ml.functions import array_to_vector
     from pyspark.sql import functions as F
 
-    tokenizer, model, settings, chosen = _load_encoder(_model_directory(model_name), device)
+    directory = _model_directory(model_name)
+    completion = directory / "completion.json"
+    if (not completion.is_file()
+            or json.loads(completion.read_text(encoding="utf-8")).get("status") != "complete"):
+        raise ValueError(f"BERT model is incomplete: {directory}; finish or resume training before prediction")
+    tokenizer, model, settings, chosen = _load_encoder(directory, device)
     transformed = []
     for frame in frames:
         ids, texts = _read_rows(frame, ordered=False)
