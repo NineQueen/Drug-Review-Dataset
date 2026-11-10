@@ -37,10 +37,10 @@ PARA_RANGE = {
 
 @AnalyticsModel.register("random_forest")
 def random_forest(
-    self: AnalyticsModel, para: dict = DEFAULT_PARA
+    self: AnalyticsModel, para: dict | None = None
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
     """Fit the weighted forest and return train, validation, and test predictions."""
-    params = {**DEFAULT_PARA, **para}
+    params = {**DEFAULT_PARA, **(para or {})}
     train_df, valid_df, test_df = self._feature_transform(FEATURES)
     train_df = train_df.withColumn(
         "weight", F.pow(F.col("weight"), F.lit(WEIGHT_POWER))
