@@ -8,8 +8,22 @@ FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log"]
 # Selected on training-only folds with accuracy as the primary metric.
 WEIGHT_POWER = 0.75
 
+DEFAULT_PARA = {
+    "numTrees": 150,
+    "maxDepth": 10,
+    "minInstancesPerNode": 50,
+    "minInfoGain": 0.0001,
+    "subsamplingRate": 0.8,
+    "featureSubsetStrategy": "sqrt",
+    "maxBins": 32,
+    "impurity": "gini",
+    "maxMemoryInMB": 256,
+    "seed": 42,
+    "weightCol": "weight",
+}
+
 # Evaluated candidates; the default run trains only one forest.
-RF_PARAM_RANGES = {
+PARA_RANGE = {
     "numTrees": [50, 100, 150],
     "maxDepth": [8, 10],
     "minInstancesPerNode": [50, 100],
@@ -23,21 +37,10 @@ RF_PARAM_RANGES = {
 
 @AnalyticsModel.register("random_forest")
 def random_forest(
-    self: AnalyticsModel, rf_params: dict | None = None
+    self: AnalyticsModel, para: dict = DEFAULT_PARA
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
     """Fit the weighted forest and return train, validation, and test predictions."""
-    params = {
-        "numTrees": 150,
-        "maxDepth": 10,
-        "minInstancesPerNode": 50,
-        "minInfoGain": 0.0001,
-        "subsamplingRate": 0.8,
-        "featureSubsetStrategy": "sqrt",
-        "maxBins": 32,
-        "maxMemoryInMB": 256,
-        "seed": 42,
-        **(rf_params or {}),
-    }
+    params = {**DEFAULT_PARA, **para}
     train_df, valid_df, test_df = self._feature_transform(FEATURES)
     train_df = train_df.withColumn(
         "weight", F.pow(F.col("weight"), F.lit(WEIGHT_POWER))
@@ -45,7 +48,6 @@ def random_forest(
     model = RandomForestClassifier(
         featuresCol="features",
         labelCol="rating_p1",
-        weightCol="weight",
         **params,
     ).fit(train_df)
     columns = ["uniqueID", "rating", "prediction"]
