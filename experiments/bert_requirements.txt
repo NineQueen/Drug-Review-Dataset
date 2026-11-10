@@ -1,0 +1,12 @@
+# Inherit the integration owner's environment without editing it.
+-r ../requirements.txt
+
+# Install the appropriate CUDA wheel first when GPU training is needed.
+torch==2.9.1
+transformers==4.57.6
+tokenizers==0.22.2
+accelerate==1.15.0
+safetensors>=0.4.3,<1
+pyarrow>=18
+scikit-learn>=1.5,<2
+ipykernel>=6,<8
