@@ -119,11 +119,11 @@ embedding 只保存自己的拟合表示。Spark 保存前只创建模型目录�
 - `data/processed/predictions/<analytics>__<embedding>/{train_predictions,valid_predictions,test_predictions}.parquet`
 - `src/embeddings/models/<embedding>/`
 
-普通组合名是 `analytics__embedding`，例如 `random_forest__glove`。主 notebook 的 baseline 段写出 `lr__tfidf` 和 `lr_improved__tfidf_improved`。评分表的列名是 `Embedding_Model` 和 `Analytic_Model`。指标是 accuracy、support-weighted precision 和 F1；support-weighted recall 与 accuracy 相同，不再单列。相同组合重加时只替换该组合。
+普通组合名是 `analytics__embedding`，例如 `random_forest__glove`。主 notebook 的 baseline 段写出 `lr__tfidf` 和 `lr_improved__tfidf_improved`。评分表的列名是 `Embedding_Model` 和 `Analytic_Model`。行按这两个名字的字典序排列。指标是 accuracy、support-weighted precision 和 F1；support-weighted recall 与 accuracy 相同，不再单列。相同组合重加时只替换该组合。
 
 `embedding_pipeline.ipynb` 训练选中的 `embedding_name`，名字来自 `train_registry` / `predict_registry`，再对 `AnalyticsModel.registry` 各调用一次。`analytics_pipeline.ipynb` 运行选中的 `register` 名，并遍历 `predict_registry`，因此不含 TF-IDF。`REBUILD = True` 时训练并保存这些表示，`False` 时调用 `load_embedding_data(name)`。两个入口都评 train、validation、test；汇报比较用 test。
 
-`experiments/para_tuning/para_tuning_pipeline.ipynb` 用 `getattr` 取写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL`。`REBUILD = True` 时先取默认训练池，再用 `SEED + 1` 做 K 折。`prepare_fold` 完成 `weight`、`encoder`、`fit_phrases` 和这个 embedding，返回拟合向量和留出向量。表示写到 `{EMBEDDING_MODEL}_para_{fold}`，折表写到 `data/processed/temp/{EMBEDDING_MODEL}_para/fold_<i>/`。`REBUILD = False` 时用 `KFold.open`。参数循环每次 `reset()` 后 `next_fold()`，选出的参数写到 `{EMBEDDING_MODEL}_{ANALYTICS_MODEL}.json`。向量写出前先卸掉编码表和扩展语料，否则 scope 会把还没写完的向量一起释放。
+`experiments/para_tuning/para_tuning_pipeline.ipynb` 用 `getattr` 取写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL`。`REBUILD = True` 时先取默认训练池，再用 `SEED + 1` 做 K 折。`prepare_fold` 完成 `weight`、`encoder`、`fit_phrases` 和这个 embedding，返回拟合向量和留出向量。表示写到 `{EMBEDDING_MODEL}_para_{fold}`，折表写到 `data/processed/temp/{EMBEDDING_MODEL}_para/fold_<i>/`。`REBUILD = False` 时用 `KFold.open`。参数循环每次 `reset()` 后 `next_fold()`。`METRIC` 取 `weighted_f1` 或 `accuracy`，都按留出折的平均值最大化。`weighted_f1` 与评分表的 support-weighted F1 相同，选出的参数写到 `{EMBEDDING_MODEL}_{ANALYTICS_MODEL}.json`。向量写出前先卸掉编码表和扩展语料，否则 scope 会把还没写完的向量一起释放。
 
 `REBUILD` 的各阶段见 README。向量按注册名读取，目录里要同时有 train、valid、test。模型变化后重建受影响的下游结果。
 

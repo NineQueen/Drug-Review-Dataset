@@ -14,7 +14,7 @@ DEFAULT_PARA = {
     "weightCol": "weight",
 }
 PARA_RANGE = {
-    "regParam": [0.01, 0.1, 0.3, 1.0],
+    "regParam": [0.3, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0, 20.0, 30.0, 50.0, 100.0],
 }
 
 @AnalyticsModel.baseline_register()

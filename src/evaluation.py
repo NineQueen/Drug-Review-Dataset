@@ -73,7 +73,7 @@ class Scorer:
         return self
 
     def show_metrics(self, **kwargs) -> None:
-        displayed = self.score
+        displayed = self.score.orderBy("Embedding_Model", "Analytic_Model")
         for metric in self.metric_names:
             displayed = displayed.withColumn(metric, F.format_string("%.8f", F.col(metric)))
         displayed.show(**kwargs)

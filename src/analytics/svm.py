@@ -1,5 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
-
 from pyspark.ml.classification import LinearSVC
 from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame
@@ -49,8 +47,7 @@ def svm(self: AnalyticsModel, para: dict | None = None) -> tuple[DataFrame, Data
         **(para or {}),
     }
     train_df, valid_df, test_df = self._feature_transform(FEATURES)
-    # Materialize the caches once: the 10 concurrent fits below each re-read
-    # these frames and would otherwise recompute the full lineage per fit.
+    # Materialize the caches once: each binary fit re-reads these frames.
     train_df.count(); valid_df.count(); test_df.count()
 
     n = train_df.count()
@@ -79,8 +76,7 @@ def svm(self: AnalyticsModel, para: dict | None = None) -> tuple[DataFrame, Data
             standardization=True,
         ).fit(binary)
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        models = list(pool.map(_fit_one, classes))
+    models = [_fit_one(c) for c in classes]
 
     def _predict(frame: DataFrame) -> DataFrame:
         scored = frame

@@ -1,0 +1,5 @@
+{
+  "embedding_model": "baseline",
+  "analytics_model": "improved_baseline",
+  "regParam": 1.0
+}
