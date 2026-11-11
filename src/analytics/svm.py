@@ -12,21 +12,27 @@ FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_v
 # features (no words columns, nothing derived from the label) and fits on the
 # training split only -- validation and test are transformed, never fitted.
 # One flat parameter dict serves every embedding (interface.md); callers may
-# override any key via `para`. Per-substrate tuned points (see
-# Project/svm_run_log.md, 2026-11-10 matrices): tfidf alpha=1.0/reg=3.1
-# (test acc .3981); glove alpha=0.82/reg=0.04 (test acc .3561); bert
-# alpha=0.87/reg=0.1 (test acc .3335; five-metric win over lr_improved on
-# valid); word2vec alpha=0.8/reg=0.15 (valid acc .3675, best acc among
-# cells that beat lr_improved on four of five metrics -- the glove-style
-# row). On every substrate weighted precision stays with lr_improved: it
-# rewards head-class concentration, and the alpha-balanced margins
-# deliberately counteract that (alpha-axis analysis in the run log).
-# The default below is the cross-substrate middle ground so unseen
-# embeddings still run sensibly.
+# override any key via `para`. Like logistic_regression.py, the module
+# carries its own fitted values so the shared runner needs no para: when
+# `para` is None the substrate's tuned point below applies (user decision
+# 2026-11-11 -- remote project.ipynb must reproduce the tuned rows on every
+# device). DEFAULT_PARA stays the flat cross-substrate fallback for
+# embeddings not listed here; an explicit `para` (e.g. the k-fold tuning
+# pipeline) still overrides everything. Tuned points (Project/svm_run_log.md,
+# 2026-11-10 matrices): glove 0.82/0.04 (test acc .3561), bert 0.87/0.1
+# (test acc .3335, five-metric win over lr_improved on valid), word2vec
+# 0.8/0.15 (valid acc .3675). On every substrate weighted precision stays
+# with lr_improved: it rewards head-class concentration, the alpha-balanced
+# margins deliberately counteract that (analysis in the run log).
 DEFAULT_PARA = {
     "alpha": 1.0,   # class-weight exponent; 1.0 = fully balanced, 0.0 = unweighted
     "regParam": 1.0,
     "maxIter": 50,
+}
+TUNED_PARA = {
+    "glove": {"alpha": 0.82, "regParam": 0.04},
+    "bert": {"alpha": 0.87, "regParam": 0.1},
+    "word2vec": {"alpha": 0.8, "regParam": 0.15},
 }
 # The grid contains each substrate's tuned point (glove 0.82/0.04~0.03,
 # bert 0.87/0.1, word2vec 0.8/0.15) plus spread, so the shared k-fold
@@ -39,13 +45,15 @@ PARA_RANGE = {
 
 @AnalyticsModel.register("svm")
 def svm(self: AnalyticsModel, para: dict | None = None) -> tuple[DataFrame, DataFrame, DataFrame]:
-    # `rating_p1` is 0-9. Passed keys override DEFAULT_PARA.
+    # `rating_p1` is 0-9. Resolution order: explicit para keys >
+    # substrate-tuned point > flat DEFAULT_PARA.
     # Manual One-vs-Rest: Spark's OneVsRest drops weightCol before fitting
     # each sub-classifier, so each binary task applies balanced weights
     # w = (n / (2 * n_class)) ** alpha itself and the prediction is the
     # argmax over the 10 margins.
     params = {
         **DEFAULT_PARA,
+        **TUNED_PARA.get(self.embedding_model, {}),
         **(para or {}),
     }
     train_df, valid_df, test_df = self._feature_transform(FEATURES)
