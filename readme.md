@@ -9,9 +9,12 @@
 ```bash
 conda activate DataEnv
 python -m pip install -r requirements.txt
+python -m nltk.downloader averaged_perceptron_tagger_eng wordnet
 ```
 
 没有这个环境时，先执行 `conda create -n DataEnv python=3.12`。编辑器提示缺少 `ipykernel` 时，在该环境里安装它。
+
+交付的 Word2Vec 使用 NLTK 3.9.3，并核对名词词形还原所用资源的指纹。上面的下载步骤在本机运行一次；Spark Python worker 也要能读取这些资源。升级 NLTK 或替换资源后，需要重新训练对应的 Word2Vec，不能直接复用旧模型。
 
 源文件是 `data/raw/drugsComTrain_raw.csv`，替换表是 `replacement.json`。源数据和拟合好的 embedding 随仓库交接。`data/processed/` 是本机缓存，不进 Git。分类器不另存模型文件。从仓库根目录启动 notebook。入口也会向上寻找 `src/` 和 `project.ipynb`，所以从本仓库的 `experiments/` 启动可以导入共享代码。
 
@@ -34,7 +37,7 @@ python -m pip install -r requirements.txt
 - `experiments/analytics_pipeline.ipynb`：选择一个 `register` 注册名。`REBUILD = True` 时训练已注册 embedding；`False` 时按注册名读取已有向量。
 - `experiments/para_tuning/para_tuning_pipeline.ipynb`：按写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL` 做 K 折调参。折向量写到 `data/processed/temp/`，不覆盖公共 split。
 
-个人入口评的是这次运行的预测。最终比较看 test。
+主入口和个人入口只评这次运行的预测。`load_prediction_data(model_names)` 按本轮模型名读取；不传名字时仍可读取全部历史预测。最终比较看 test。
 
 ## 清洗和文本的边界
 

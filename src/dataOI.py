@@ -167,16 +167,21 @@ class DataOI:
                 .parquet(str(target_path / filename))
             )
 
-    def load_prediction_data(self) -> tuple[dict[str, DataFrame], dict[str, DataFrame], dict[str, DataFrame]]:
+    def load_prediction_data(
+        self, model_names: list[str] | None = None
+    ) -> tuple[dict[str, DataFrame], dict[str, DataFrame], dict[str, DataFrame]]:
+        """Read selected prediction triplets, or all saved runs when names are omitted."""
         if not paths.PREDICTION_DIR.is_dir():
             raise FileNotFoundError(f"{paths.PREDICTION_DIR} does not exist")
         train_dict = {}
         valid_dict = {}
         test_dict = {}
         # The directory name is `{analytics}__{embedding}`, for example `lr__tfidf`.
-        for model_dir in paths.PREDICTION_DIR.iterdir():
-            if not model_dir.is_dir():
-                continue
+        if model_names is None:
+            model_dirs = (entry for entry in paths.PREDICTION_DIR.iterdir() if entry.is_dir())
+        else:
+            model_dirs = (paths.PREDICTION_DIR / name for name in model_names)
+        for model_dir in model_dirs:
             self._require_train_test(
                 model_dir,
                 paths.TRAIN_PREDICTION_PARQUET,
