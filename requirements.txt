@@ -6,7 +6,8 @@ python-dateutil>=2.8.2,<3
 pyarrow>=18,<26
 scipy>=1.15,<1.19
 matplotlib>=3.8
-nltk>=3.9,<4
+# Match the noun-normalization metadata in the delivered Word2Vec model.
+nltk==3.9.3
 rouge-score>=0.1.2
 gensim==4.4.0
 glovpy==0.2.0

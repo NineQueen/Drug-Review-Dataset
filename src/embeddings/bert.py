@@ -281,6 +281,14 @@ def _fit_texts(train_texts, valid_texts, directory, config, provenance, resume=F
                 "validation_sha256": _corpus_digest(valid_texts), "provenance": provenance}:
             raise ValueError("Existing run uses different data or settings; choose a fresh model_name")
         if completed:
+            raw_dimension = _pooling_dimension(config)
+            dimension = (min(DEFAULT_WHITEN_DIMENSION, raw_dimension, len(train_texts))
+                         if DEFAULT_WHITEN_DIMENSION else raw_dimension)
+            if (representation.get("pooling") != DEFAULT_POOLING
+                    or representation.get("dimension") != dimension
+                    or bool(representation.get("postprocessing")) != bool(DEFAULT_WHITEN_DIMENSION)):
+                raise ValueError("Existing BERT representation uses different pooling or postprocessing; "
+                                 "choose a fresh model_name")
             print(f"Reusing completed BERT run with identical inputs and settings: {directory}")
             return json.loads((directory / "completion.json").read_text(encoding="utf-8"))
         if not resume:
@@ -433,16 +441,20 @@ def _load_encoder(directory, device="auto"):
     return tokenizer, model, settings, chosen
 
 
+def _pooling_dimension(config):
+    multipliers = {"mean": 1, "last2_mean": 1, "all_mean": 1, "max": 1,
+                   "mean_max": 2, "embedding_last_mean": 2, "segmented_mean": 3,
+                   "layers_concat": config.num_hidden_layers,
+                   "embedding_layers_concat": config.num_hidden_layers + 1}
+    return config.hidden_size * multipliers[DEFAULT_POOLING]
+
+
 def _fit_representation(directory, fit_texts, config):
     """Fit sentence-vector postprocessing on the MLM fitting rows only."""
     directory = Path(directory)
     # Refitting invalidates completion until every inference artifact is saved.
     (directory / "completion.json").unlink(missing_ok=True)
-    multipliers = {"mean": 1, "last2_mean": 1, "all_mean": 1, "max": 1,
-                   "mean_max": 2, "embedding_last_mean": 2, "segmented_mean": 3,
-                   "layers_concat": config.num_hidden_layers,
-                   "embedding_layers_concat": config.num_hidden_layers + 1}
-    raw_dimension = config.hidden_size * multipliers[DEFAULT_POOLING]
+    raw_dimension = _pooling_dimension(config)
     settings = {"max_length": config.max_length, "dimension": raw_dimension,
                 "pooling": DEFAULT_POOLING, "normalize": True, "postprocessing": None}
     _write_json(directory / "embedding_config.json", settings)

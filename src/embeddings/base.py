@@ -1,3 +1,5 @@
+from functools import wraps
+
 from gensim.models.phrases import FrozenPhrases
 from pyspark.sql import DataFrame
 from src.dataOI import DataOI
@@ -100,9 +102,13 @@ class EmbeddingModel:
     @classmethod
     def train_register(cls, name: str):
         def decorator(function):
-            setattr(cls, function.__name__, function)
-            cls.train_registry[name] = function
-            return function
+            @wraps(function)
+            def train(self, *args, **kwargs):
+                with DataOI().scope():
+                    return function(self, *args, **kwargs)
+            setattr(cls, function.__name__, train)
+            cls.train_registry[name] = train
+            return train
         return decorator
 
     @staticmethod
