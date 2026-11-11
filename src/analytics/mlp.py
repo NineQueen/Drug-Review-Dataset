@@ -1,3 +1,4 @@
+from copy import deepcopy
 from itertools import islice
 
 import numpy as np
@@ -10,12 +11,13 @@ from src.analytics.base import AnalyticsModel
 
 FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_vec"]
 NUM_CLASSES = 10
-HIDDEN_LAYERS = (64, 32)
-USE_WEIGHTS = True
 
-# D / 30 is the initial default, pending the 12 validation experiments.
 DEFAULT_PARA = {
-    "epochs": 30,
+    "hidden_layers": (64, 32),
+    "weighted": True,
+    "epochs": 50,
+    "patience": 5,
+    "min_delta": 0.0005,
     "batch_size": 128,
     "lr": 0.001,
     "betas": (0.9, 0.999),
@@ -24,15 +26,19 @@ DEFAULT_PARA = {
     "seed": 42,
     "weight_col": "weight",
 }
-PARA_RANGE = {}
+PARA_RANGE = {
+    "hidden_layers": [(64,), (64, 32)],
+    "weighted": [False, True],
+}
 
 
 class MLPTrainer:
-    """Share minibatch training between the registered model and experiments."""
+    """Train minibatches and restore the best validation checkpoint."""
 
     def __init__(
         self, train: DataFrame, hidden_layers: tuple[int, ...], weighted: bool,
         *, epochs: int, batch_size: int,
+        patience: int, min_delta: float,
         lr: float, betas: tuple[float, float], eps: float,
         weight_decay: float, seed: int, weight_col: str,
     ) -> None:
@@ -41,6 +47,8 @@ class MLPTrainer:
 
         self.epochs = epochs
         self.batch_size = batch_size
+        self.patience = patience
+        self.min_delta = min_delta
         self.rng = np.random.default_rng(seed)
         scaler = StandardScaler(
             inputCol="features", outputCol="scaled_features", withMean=True, withStd=True
@@ -95,6 +103,32 @@ class MLPTrainer:
             total_loss += loss.item() * len(indices)
         return total_loss / len(self.rows)
 
+    def fit(self, valid: DataFrame) -> None:
+        from sklearn.metrics import f1_score
+
+        rows = list(valid.select("rating_p1", "features").toLocalIterator())
+        labels = np.asarray([row.rating_p1 for row in rows], dtype=np.int64)
+        self.history = []
+        best_score = last_improvement = -float("inf")
+        stale_epochs = 0
+        for epoch in range(1, self.epochs + 1):
+            loss = self.train_epoch()
+            predictions = self.predict_rows(rows)
+            score = float(f1_score(labels, predictions, average="weighted", zero_division=0))
+            self.history.append({"epoch": epoch, "train_loss": loss, "valid_weighted_f1": score})
+            if score > best_score:
+                best_score, self.best_epoch = score, epoch
+                best_state = deepcopy(self.network.state_dict())
+            if score > last_improvement + self.min_delta:
+                last_improvement, stale_epochs = score, 0
+            else:
+                stale_epochs += 1
+            print(f"Epoch {epoch}: loss {loss:.5f}, validation F1 {score:.5f}")
+            if stale_epochs >= self.patience:
+                break
+        self.network.load_state_dict(best_state)
+        self.best_valid_weighted_f1 = best_score
+
     def predict_rows(self, rows) -> np.ndarray:
         import torch
 
@@ -126,10 +160,16 @@ class MLPTrainer:
 def mlp(
     self: AnalyticsModel, para: dict = DEFAULT_PARA
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
-    """Fit a fixed epoch budget on train and return the three prediction frames."""
+    """Use the supplied validation frame for early stopping and return predictions."""
     params = {**DEFAULT_PARA, **para}
     train, valid, test = self._feature_transform(FEATURES)
-    trainer = MLPTrainer(train, HIDDEN_LAYERS, USE_WEIGHTS, **params)
-    for _ in range(trainer.epochs):
-        trainer.train_epoch()
+    trainer = MLPTrainer(train, **params)
+    trainer.fit(valid)
+    self.training_info = {
+        "best_epoch": trainer.best_epoch,
+        "epochs_run": len(trainer.history),
+        "best_valid_weighted_f1": trainer.best_valid_weighted_f1,
+        "history": trainer.history,
+    }
+    print(f"MLP best epoch: {trainer.best_epoch}/{len(trainer.history)}, validation F1 {trainer.best_valid_weighted_f1:.5f}")
     return trainer.predict(train), trainer.predict(valid), trainer.predict(test)
