@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "config": {
     "vector_size": 300,
     "window_size": 5,
@@ -13,5 +13,83 @@
   },
   "output_dimension": 600,
   "input_column": "words",
-  "training_corpus": "self.train only"
+  "training_corpus": "self.train only",
+  "normalization": {
+    "policy": "noun_only",
+    "nltk_version": "3.9.3",
+    "tagger": "averaged_perceptron_tagger_eng",
+    "wordnet": "3.0",
+    "degree_tags": [
+      "JJR",
+      "JJS",
+      "RBR",
+      "RBS"
+    ],
+    "degree_words": [
+      "best",
+      "better",
+      "worse",
+      "worst"
+    ],
+    "numeric_tokens": "unchanged",
+    "assets_sha256": {
+      "averaged_perceptron_tagger_eng.classes.json": "d152ffa69d45b8357276341a3d592c6c025911d52ec0d9068d4f382560dd48b6",
+      "averaged_perceptron_tagger_eng.tagdict.json": "4c713731cb06727736962bc8cd94ad919217a040e76691059af99bc0c2c9c246",
+      "averaged_perceptron_tagger_eng.weights.json": "789e8e35f6fac656d9b7eccea29ba4e8a137cbb5b525dd31f39e4291a9e80832",
+      "wordnet.zip": "cbda5ea6eef7f36a97a43d4a75f85e07fccbb4f23657d27b4ccbc93e2646ab59"
+    }
+  },
+  "training_order": "uniqueID ascending, one cached input partition",
+  "source": {
+    "experiment": "selectlemma_20261111_154957/noun_only",
+    "model": "word2vec_noun_only_20261111_154957",
+    "experiment_code_commit": "6e9ae80597c267390b52e227c004e030e6da9bcc",
+    "input_source_commit": "46b1a03",
+    "inputs": {
+      "train": {
+        "path": "data/processed/split/train.parquet",
+        "rows": 77800,
+        "parquet_files": 200,
+        "sha256": "c9217a0940521b6fb0a87b1a523fe34d81276927fbb73d8c788faf538f8b9270"
+      },
+      "valid": {
+        "path": "data/processed/split/valid.parquet",
+        "rows": 11147,
+        "parquet_files": 200,
+        "sha256": "e9972fcb9acb214ae1f387b54e9d80dbab4cc036b8316c86e0f756dd308c17e7"
+      },
+      "test": {
+        "path": "data/processed/split/test.parquet",
+        "rows": 22220,
+        "parquet_files": 200,
+        "sha256": "1394f7eca1de5f7182556bc60b7334eb292793d1f7aaa479dec1566db56088ce"
+      }
+    },
+    "train_tokens": 6702823,
+    "changed_train_tokens": 295995,
+    "vocabulary_size": 13812,
+    "spark_files_sha256": {
+      "data/.part-00000-6f75482d-e3ed-4fd4-989a-118a2da054aa-c000.snappy.parquet.crc": "ff655a6ff9f0719714b91e1b980215d533edf7ef7b4e9b17f60d13fa75af8c2c",
+      "data/._SUCCESS.crc": "1d44f510ec2ed7595badbec80583316defc14e8dd89130d719724149adfaa07d",
+      "data/part-00000-6f75482d-e3ed-4fd4-989a-118a2da054aa-c000.snappy.parquet": "a0d22724ebb46b033fc269db97ea25fe29211554ad499200fe93c1e924e65da4",
+      "data/_SUCCESS": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "metadata/.part-00000-c54a8cd3-9747-43a7-a565-5e0b5efda5a7-c000.txt.crc": "8967de271928d5dfb54635d2d9fe16bdda5b7ee91fe0ac27cbcb9d7d6776907a",
+      "metadata/._SUCCESS.crc": "1d44f510ec2ed7595badbec80583316defc14e8dd89130d719724149adfaa07d",
+      "metadata/part-00000-c54a8cd3-9747-43a7-a565-5e0b5efda5a7-c000.txt": "4fa51944dcbdcc79fbb2a1106022a2efc7f598941ceb49b6740ab1d60211e5b6",
+      "metadata/_SUCCESS": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "validation_reference": {
+    "scope": "Historical lr_baseline; single seed; not a fresh run of latest shared notebook",
+    "classifier": "lr_baseline",
+    "regParam": 0,
+    "iterations": 100,
+    "rows": 11147,
+    "accuracy": 0.40414461290033193,
+    "weighted_precision": 0.33344637456786946,
+    "weighted_f1": 0.35362440221459823,
+    "mae": 1.740378577195658,
+    "rmse": 2.9347131871758987,
+    "test_scores_deferred": true
+  }
 }

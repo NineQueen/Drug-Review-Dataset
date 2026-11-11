@@ -1,4 +1,6 @@
-"""Train-only Word2Vec with saved configuration and mean/max review vectors."""
+"""Train-only Word2Vec with noun lemmatization and mean/max review vectors."""
+from functools import lru_cache
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -13,6 +15,57 @@ DEFAULT_CONFIG = {
     "step_size": 0.025, "seed": 42, "num_partitions": 1,
     "max_sentence_length": 1000, "pooling": "meanmax",
 }
+TOKEN_COLUMN = "_word2vec_tokens"
+DEGREE_TAGS = {"JJR", "JJS", "RBR", "RBS"}
+DEGREE_WORDS = {"better", "best", "worse", "worst"}
+
+
+@lru_cache(maxsize=1)
+def _noun_tools():
+    from nltk.tag import PerceptronTagger
+    from nltk.stem import WordNetLemmatizer
+    tagger = PerceptronTagger(lang="eng")
+    lemmatizer = WordNetLemmatizer()
+    lemmatizer.lemmatize("dogs", "n")
+    return tagger, lemmatizer
+
+
+@lru_cache(maxsize=200000)
+def _noun_lemma(word):
+    return _noun_tools()[1].lemmatize(word, "n")
+
+
+def _noun_tokens(words):
+    words = words or []
+    return [
+        _noun_lemma(word)
+        if tag.startswith("N") and tag not in DEGREE_TAGS
+        and word not in DEGREE_WORDS and not any(c.isdigit() for c in word)
+        else word
+        for word, tag in _noun_tools()[0].tag(words)
+    ]
+
+
+def _normalization_metadata():
+    import nltk
+    tagger = Path(str(nltk.data.find("taggers/averaged_perceptron_tagger_eng")))
+    wordnet = Path(str(nltk.data.find("corpora/wordnet.zip")))
+    assets = {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+              for p in sorted(tagger.glob("*.json"))}
+    assets[wordnet.name] = hashlib.sha256(wordnet.read_bytes()).hexdigest()
+    _noun_tools()
+    from nltk.corpus import wordnet as corpus
+    return {"policy": "noun_only", "nltk_version": nltk.__version__,
+            "tagger": "averaged_perceptron_tagger_eng", "wordnet": corpus.get_version(),
+            "degree_tags": sorted(DEGREE_TAGS), "degree_words": sorted(DEGREE_WORDS),
+            "numeric_tokens": "unchanged", "assets_sha256": assets}
+
+
+def _normalized_frame(frame):
+    from pyspark.sql import functions as F
+    from pyspark.sql.types import ArrayType, StringType
+    normalize = F.udf(_noun_tokens, ArrayType(StringType()), useArrow=False)
+    return frame.withColumn(TOKEN_COLUMN, normalize(F.col("words")))
 
 
 def _configuration(overrides=None):
@@ -42,10 +95,12 @@ def _model_path(model_name):
     return EMBEDDING_MODELS_DIR / model_name
 
 
-def _save_configuration(path, config):
+def _save_configuration(path, config, normalization):
     dimension = config["vector_size"] * (2 if config["pooling"] == "meanmax" else 1)
-    record = {"format_version": 1, "config": config, "output_dimension": dimension,
-              "input_column": "words", "training_corpus": "self.train only"}
+    record = {"format_version": 2, "config": config, "output_dimension": dimension,
+              "input_column": "words", "training_corpus": "self.train only",
+              "normalization": normalization,
+              "training_order": "uniqueID ascending, one cached input partition"}
     (path / "embedding_config.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
     # Preserve Hadoop CRCs and metadata bytes when committing a fitted model.
     (path / ".gitattributes").write_text("** -text\n", encoding="utf-8", newline="\n")
@@ -53,19 +108,24 @@ def _save_configuration(path, config):
 
 @EmbeddingModel.train_register("word2vec")
 def word2vec_train(self, model_name="word2vec", *, config=None):
-    """Always fit afresh on complete train.words; unspecified keys use defaults."""
+    """Fit afresh on noun-normalized training words, preserving public columns."""
     actual = _configuration(config)
     path = _model_path(model_name)
+    normalization = _normalization_metadata()
+    from pyspark.sql import functions as F
+    train = (_normalized_frame(self.train).select("uniqueID", TOKEN_COLUMN)
+             .orderBy("uniqueID").coalesce(1)
+             .select(F.col(TOKEN_COLUMN).alias("words")).cache())
     estimator = Word2Vec(
         inputCol="words", outputCol="embedding", vectorSize=actual["vector_size"],
         windowSize=actual["window_size"], minCount=actual["min_count"],
         maxIter=actual["max_iter"], stepSize=actual["step_size"], seed=actual["seed"],
         numPartitions=actual["num_partitions"], maxSentenceLength=actual["max_sentence_length"],
     )
-    model = estimator.fit(self.train.select("words"))
+    model = estimator.fit(train)
     path.parent.mkdir(parents=True, exist_ok=True)
     model.write().overwrite().save(str(path))
-    _save_configuration(path, actual)
+    _save_configuration(path, actual, normalization)
 
 
 def _meanmax(tokens, vectors, dimension):
@@ -83,7 +143,7 @@ def word2vec_predict(self, model_name="word2vec"):
     """Read this model's persisted config; registry wrapper narrows output columns."""
     path = _model_path(model_name)
     saved = json.loads((path / "embedding_config.json").read_text(encoding="utf-8"))
-    if saved["format_version"] != 1 or saved["input_column"] != "words":
+    if saved["format_version"] not in (1, 2) or saved["input_column"] != "words":
         raise ValueError("Unsupported Word2Vec embedding config")
     actual = _configuration(saved["config"])
     model = Word2VecModel.load(str(path))
@@ -92,7 +152,14 @@ def word2vec_predict(self, model_name="word2vec"):
     if d != actual["vector_size"] or dimension != saved["output_dimension"]:
         raise ValueError("Saved word model and embedding config dimensions disagree")
     frames = (self.train, self.valid, self.test)
+    token_column = "words"
+    if saved["format_version"] == 2:
+        if saved["normalization"] != _normalization_metadata():
+            raise ValueError("NLTK version/resources differ from this fitted Word2Vec model")
+        frames = tuple(_normalized_frame(frame) for frame in frames)
+        token_column = TOKEN_COLUMN
     if actual["pooling"] == "p01":
+        model.setInputCol(token_column)
         return tuple(model.transform(frame) for frame in frames)
     import numpy as np
     from pyspark.ml.linalg import VectorUDT, Vectors
@@ -104,4 +171,4 @@ def word2vec_predict(self, model_name="word2vec"):
     def pool(tokens):
         return Vectors.dense(_meanmax(tokens, shared.value, d))
 
-    return tuple(frame.withColumn("embedding", pool("words").alias("embedding", metadata={"ml_attr": {"num_attrs": dimension}})) for frame in frames)
+    return tuple(frame.withColumn("embedding", pool(token_column).alias("embedding", metadata={"ml_attr": {"num_attrs": dimension}})) for frame in frames)
