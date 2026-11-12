@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pyspark.sql import DataFrame
 from src.embeddings.base import EmbeddingModel
 from pyspark.ml.linalg import VectorUDT, Vectors
@@ -20,20 +22,22 @@ glove_para = {
 
 
 @EmbeddingModel.train_register("glove")
-def glove_train(self:EmbeddingModel, model_name:str = "glove") -> None:
+def glove_train(self: EmbeddingModel, model_name: str = "glove", model_dir: Path = EMBEDDING_MODELS_DIR) -> None:
     from glovpy import GloVe
     tokens = self.train_expanded_phrase.select("words_nostop").toPandas()["words_nostop"]
     reviews = [list(sentence) if sentence is not None else [] for sentence in tokens]
     model = GloVe(**glove_para)
     model.train(reviews)
 
-    model_path = EMBEDDING_MODELS_DIR / model_name
+    model_path = Path(model_dir) / model_name
     model_path.mkdir(parents= True, exist_ok=True)
     model.wv.save(str(model_path/"glove.kv"))
 
 @EmbeddingModel.predict_register("glove")
-def glove_predict(self: EmbeddingModel, model_name:str = "glove") -> tuple[DataFrame, DataFrame, DataFrame]:
-    keyed = KeyedVectors.load(str(EMBEDDING_MODELS_DIR / model_name / "glove.kv"))
+def glove_predict(
+    self: EmbeddingModel, model_name: str = "glove", model_dir: Path = EMBEDDING_MODELS_DIR
+) -> tuple[DataFrame, DataFrame, DataFrame]:
+    keyed = KeyedVectors.load(str(Path(model_dir) / model_name / "glove.kv"))
     token_vectors = {word:keyed.get_vector(word) for word in keyed.index_to_key}
     broadcast_vectors = self.train.sparkSession.sparkContext.broadcast(token_vectors)
     dimension = int(keyed.vector_size)

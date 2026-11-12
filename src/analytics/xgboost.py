@@ -1,10 +1,11 @@
+from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, functions as F
 
 from src.analytics.base import AnalyticsModel
 
 
 FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log"]
-WEIGHT_POWER = 0.35
+WEIGHT_POWER = 0.7
 
 # Selected by accuracy on a holdout from the GloVe training pool.
 DEFAULT_PARA = {
@@ -58,10 +59,11 @@ def xgboost(
         prediction_col="prediction",
         **params,
     ).fit(train_df)
-    columns = ["uniqueID", "rating", "prediction"]
+    columns = ["uniqueID", "rating", "prediction", "probability"]
     return tuple(
         model.transform(frame)
         .withColumn("prediction", F.col("prediction").cast("double"))
+        .withColumn("probability", vector_to_array("probability"))
         .select(*columns)
         for frame in (train_df, valid_df, test_df)
     )

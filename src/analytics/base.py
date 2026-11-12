@@ -28,11 +28,13 @@ class AnalyticsModel:
     training frame. Validation and test are transformed, not used to fit,
     calibrate, or select parameters.
 
-    Each returned frame has only `uniqueID`, `rating`, and `prediction`.
-    `rating` stays on the original 1-10 scale. `prediction` uses the same 0-9
-    classes as `rating_p1`. Leave the prediction on that scale; `Scorer` builds
-    `rating_pred = prediction + 1`. The function returns those frames and does
-    not save a classifier.
+    Each returned frame has `uniqueID`, `rating`, `prediction`, and
+    `probability`. `rating` stays on the original 1-10 scale. `prediction`
+    uses the same 0-9 classes as `rating_p1`. Leave the prediction on that
+    scale; `Scorer` builds `rating_pred = prediction + 1`. `probability` is an
+    array of 10 doubles indexed by class. SVM stores one-vs-rest scores there;
+    the other classifiers store class probabilities. The function returns those
+    frames and does not save a classifier.
 
     A model that needs one feature vector calls `_feature_transform` with its
     fixed column list. That call returns the training, validation, and test

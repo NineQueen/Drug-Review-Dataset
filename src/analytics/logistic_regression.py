@@ -1,9 +1,21 @@
 import select
 from pyspark.ml.classification import LogisticRegression, LogisticRegressionModel
+from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame
 from pyspark.sql.functions import transform
 from src.analytics.base import AnalyticsModel
 from src.paths import ANALYTIC_MODELS_DIR
+
+PREDICTION_COLUMNS = ["uniqueID", "rating", "prediction", "probability"]
+
+
+def _prediction_frames(model, *frames: DataFrame) -> tuple[DataFrame, ...]:
+    return tuple(
+        model.transform(frame)
+        .withColumn("probability", vector_to_array("probability"))
+        .select(*PREDICTION_COLUMNS)
+        for frame in frames
+    )
 
 FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_vec"]
 
@@ -23,12 +35,7 @@ def lr_baseline(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
     # Exclude the drug target mean so a training label cannot enter this feature.
     train_df, valid_df,test_df = self._feature_transform(FEATURES)
     lr_model = LogisticRegression(featuresCol="features", labelCol="rating_p1").fit(train_df)
-    columns = ["uniqueID", "rating", "prediction"]
-    return (
-        lr_model.transform(train_df).select(*columns),
-        lr_model.transform(valid_df).select(*columns),
-        lr_model.transform(test_df).select(*columns),
-    )
+    return _prediction_frames(lr_model, train_df, valid_df, test_df)
 
 @AnalyticsModel.improved_baseline_register()
 def improved_baseline(
@@ -46,9 +53,4 @@ def improved_baseline(
         labelCol="rating_p1",
         **params,
     ).fit(train_df)
-    columns = ["uniqueID", "rating", "prediction"]
-    return (
-        lr_improved_model.transform(train_df).select(*columns),
-        lr_improved_model.transform(valid_df).select(*columns),
-        lr_improved_model.transform(test_df).select(*columns),
-    )
+    return _prediction_frames(lr_improved_model, train_df, valid_df, test_df)

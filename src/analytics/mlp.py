@@ -4,14 +4,17 @@ from itertools import islice
 import numpy as np
 from pyspark.ml.feature import StandardScaler
 from pyspark.sql import DataFrame
-from pyspark.sql.types import DoubleType, StructField, StructType
+from pyspark.sql.types import ArrayType, DoubleType, StructField, StructType
 
 from src.analytics.base import AnalyticsModel
+from src.seed import SEED, seed
+from src.split import split
 
 
 FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_vec"]
 NUM_CLASSES = 10
-WEIGHT_POWER = 0.5
+# 90% fits the network. The other 10% of the training frame is the early-stop set.
+EARLY_STOP_RATIOS = (9, 1)
 
 DEFAULT_PARA = {
     "hidden_layers": (64, 32),
@@ -23,7 +26,7 @@ DEFAULT_PARA = {
     "betas": (0.9, 0.999),
     "eps": 1e-8,
     "weight_decay": 0.0,
-    "seed": 42,
+    "seed": SEED,
     "weight_col": "weight",
 }
 PARA_RANGE = {
@@ -32,7 +35,7 @@ PARA_RANGE = {
 
 
 class MLPTrainer:
-    """Train minibatches and restore the best validation checkpoint."""
+    """Train minibatches and restore the best early-stop checkpoint."""
 
     def __init__(
         self, train: DataFrame, hidden_layers: tuple[int, ...],
@@ -58,8 +61,9 @@ class MLPTrainer:
         columns = ["features", "rating_p1", weight_col]
         self.rows = list(train.orderBy("uniqueID").select(*columns).toLocalIterator())
         self.targets = torch.tensor([row.rating_p1 for row in self.rows], dtype=torch.long)
-        weights = np.asarray([row[weight_col] for row in self.rows], dtype=np.float32) ** WEIGHT_POWER
-        self.weights = torch.from_numpy(weights / weights.mean())
+        self.weights = torch.from_numpy(
+            np.asarray([row[weight_col] for row in self.rows], dtype=np.float32)
+        )
         layers = []
         width = len(self.mean)
         with torch.random.fork_rng(devices=[]):
@@ -98,10 +102,10 @@ class MLPTrainer:
             total_loss += loss.item() * len(indices)
         return total_loss / len(self.rows)
 
-    def fit(self, valid: DataFrame) -> None:
+    def fit(self, early_stop: DataFrame) -> None:
         from sklearn.metrics import f1_score
 
-        rows = list(valid.select("rating_p1", "features").toLocalIterator())
+        rows = list(early_stop.select("rating_p1", "features").toLocalIterator())
         labels = np.asarray([row.rating_p1 for row in rows], dtype=np.int64)
         self.history = []
         best_score = last_improvement = -float("inf")
@@ -110,7 +114,7 @@ class MLPTrainer:
             loss = self.train_epoch()
             predictions = self.predict_rows(rows)
             score = float(f1_score(labels, predictions, average="weighted", zero_division=0))
-            self.history.append({"epoch": epoch, "train_loss": loss, "valid_weighted_f1": score})
+            self.history.append({"epoch": epoch, "train_loss": loss, "early_stop_weighted_f1": score})
             if score > best_score:
                 best_score, self.best_epoch = score, epoch
                 best_state = deepcopy(self.network.state_dict())
@@ -118,11 +122,11 @@ class MLPTrainer:
                 last_improvement, stale_epochs = score, 0
             else:
                 stale_epochs += 1
-            print(f"Epoch {epoch}: loss {loss:.5f}, validation F1 {score:.5f}")
+            print(f"Epoch {epoch}: loss {loss:.5f}, early-stop F1 {score:.5f}")
             if stale_epochs >= self.patience:
                 break
         self.network.load_state_dict(best_state)
-        self.best_valid_weighted_f1 = best_score
+        self.best_early_stop_weighted_f1 = best_score
 
     def predict_rows(self, rows) -> np.ndarray:
         import torch
@@ -136,17 +140,27 @@ class MLPTrainer:
         return np.asarray(predictions, dtype=np.int64)
 
     def predict(self, frame: DataFrame) -> DataFrame:
+        import torch
+
         rows = frame.select("uniqueID", "rating", "features").toLocalIterator()
         records = []
-        while batch := list(islice(rows, self.batch_size)):
-            labels = self.predict_rows(batch)
-            records.extend(
-                (row.uniqueID, row.rating, float(label))
-                for row, label in zip(batch, labels)
-            )
+        self.network.eval()
+        with torch.inference_mode():
+            while batch := list(islice(rows, self.batch_size)):
+                probability = torch.softmax(self.network(self._batch(batch)), dim=1).cpu().numpy()
+                records.extend(
+                    (
+                        row.uniqueID,
+                        row.rating,
+                        float(label),
+                        [float(value) for value in vector],
+                    )
+                    for row, label, vector in zip(batch, probability.argmax(axis=1), probability)
+                )
         schema = StructType([
             frame.schema["uniqueID"], frame.schema["rating"],
             StructField("prediction", DoubleType(), False),
+            StructField("probability", ArrayType(DoubleType(), False), False),
         ])
         return frame.sparkSession.createDataFrame(records, schema)
 
@@ -155,16 +169,18 @@ class MLPTrainer:
 def mlp(
     self: AnalyticsModel, para: dict | None = None
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
-    """Use the supplied validation frame for early stopping and return predictions."""
+    """Hold out a training slice for early stopping and return predictions."""
     params = {**DEFAULT_PARA, **(para or {})}
     train, valid, test = self._feature_transform(FEATURES)
-    trainer = MLPTrainer(train, **params)
-    trainer.fit(valid)
+    # Fold fits are already cut with seed(1), so this slice uses seed(2).
+    fit_df, early_stop = split(train, seed(2), EARLY_STOP_RATIOS)
+    trainer = MLPTrainer(fit_df, **params)
+    trainer.fit(early_stop)
     self.training_info = {
         "best_epoch": trainer.best_epoch,
         "epochs_run": len(trainer.history),
-        "best_valid_weighted_f1": trainer.best_valid_weighted_f1,
+        "best_early_stop_weighted_f1": trainer.best_early_stop_weighted_f1,
         "history": trainer.history,
     }
-    print(f"MLP best epoch: {trainer.best_epoch}/{len(trainer.history)}, validation F1 {trainer.best_valid_weighted_f1:.5f}")
+    print(f"MLP best epoch: {trainer.best_epoch}/{len(trainer.history)}, early-stop F1 {trainer.best_early_stop_weighted_f1:.5f}")
     return trainer.predict(train), trainer.predict(valid), trainer.predict(test)

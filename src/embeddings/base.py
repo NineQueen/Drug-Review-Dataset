@@ -3,6 +3,7 @@ from functools import wraps
 from gensim.models.phrases import FrozenPhrases
 from pyspark.sql import DataFrame
 from src.dataOI import DataOI
+from src.paths import EMBEDDING_MODELS_DIR
 from src.cleaning import webmd_data_cleaning
 from src.text_features import text_feature_engineering, apply_phrases
 from pyspark.sql import functions as F
@@ -11,7 +12,8 @@ class EmbeddingModel:
     """Text representation fitted on the training split.
 
     The instance holds `self.train`, `self.valid`, and `self.test`.
-    `train` fits on `self.train` and saves the model under `EMBEDDING_MODELS_DIR / model_name`.
+    `train` fits on `self.train` and saves the model under `model_dir / model_name`.
+    `model_dir` defaults to `EMBEDDING_MODELS_DIR`.
     `predict` loads that saved model and transforms the training, validation, and test frames.
     It returns those three frames in that order.
 
@@ -119,8 +121,8 @@ class EmbeddingModel:
     @classmethod
     def predict_register(cls, name: str):
         def decorator(function):
-            def predict(self, model_name: str = name):
-                train_df, valid_df, test_df = function(self, model_name)
+            def predict(self, model_name: str = name, model_dir=EMBEDDING_MODELS_DIR):
+                train_df, valid_df, test_df = function(self, model_name, model_dir=model_dir)
                 return (
                     cls._model_columns(train_df),
                     cls._model_columns(valid_df),

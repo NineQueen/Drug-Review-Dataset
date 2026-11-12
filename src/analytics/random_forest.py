@@ -1,4 +1,5 @@
 from pyspark.ml.classification import RandomForestClassifier
+from pyspark.ml.functions import vector_to_array
 from pyspark.sql import DataFrame, functions as F
 
 from src.analytics.base import AnalyticsModel
@@ -50,9 +51,10 @@ def random_forest(
         labelCol="rating_p1",
         **params,
     ).fit(train_df)
-    columns = ["uniqueID", "rating", "prediction"]
-    return (
-        model.transform(train_df).select(*columns),
-        model.transform(valid_df).select(*columns),
-        model.transform(test_df).select(*columns),
+    columns = ["uniqueID", "rating", "prediction", "probability"]
+    return tuple(
+        model.transform(frame)
+        .withColumn("probability", vector_to_array("probability"))
+        .select(*columns)
+        for frame in (train_df, valid_df, test_df)
     )

@@ -83,10 +83,10 @@ def _dependencies():
     return torch, transformers, (Tokenizer, models, normalizers, pre_tokenizers, trainers)
 
 
-def _model_directory(model_name):
+def _model_directory(model_name, model_dir=EMBEDDING_MODELS_DIR):
     if not re.fullmatch(r"[a-z][a-z0-9_]*", model_name) or "__" in model_name:
         raise ValueError("Use a lowercase model_name without __ or path separators")
-    return EMBEDDING_MODELS_DIR / model_name
+    return Path(model_dir) / model_name
 
 
 def _text_key(text):
@@ -395,7 +395,7 @@ def _fit_texts(train_texts, valid_texts, directory, config, provenance, resume=F
 
 
 @EmbeddingModel.train_register("bert")
-def bert_train(self, model_name="bert", *, config=None, resume=False):
+def bert_train(self, model_name="bert", *, config=None, resume=False, model_dir=EMBEDDING_MODELS_DIR):
     """Fit and select the encoder using only rows from self.train.
 
     A grouped holdout inside training supplies fixed-mask MLM early stopping.
@@ -420,7 +420,7 @@ def bert_train(self, model_name="bert", *, config=None, resume=False):
         "split_grouping": "NFKC/HTML/case/whitespace normalized text hash",
         "external_source": None,
     }
-    _fit_texts(train_texts, mlm_validation, _model_directory(model_name), config, provenance, resume)
+    _fit_texts(train_texts, mlm_validation, _model_directory(model_name, model_dir), config, provenance, resume)
 
 
 def _load_encoder(directory, device="auto"):
@@ -559,14 +559,14 @@ def _encode_texts(texts, tokenizer, model, settings, device, batch_size=128):
     return result
 
 
-def _bert_encode_frames(frames, model_name, *, batch_size=128, device="auto"):
+def _bert_encode_frames(frames, model_name, *, batch_size=128, device="auto", model_dir=EMBEDDING_MODELS_DIR):
     """Encode supplied frames without retaining text columns or Spark caches."""
     import numpy as np
     import pyarrow as pa
     from pyspark.ml.functions import array_to_vector
     from pyspark.sql import functions as F
 
-    directory = _model_directory(model_name)
+    directory = _model_directory(model_name, model_dir)
     completion = directory / "completion.json"
     if (not completion.is_file()
             or json.loads(completion.read_text(encoding="utf-8")).get("status") != "complete"):
@@ -594,10 +594,12 @@ def _bert_encode_frames(frames, model_name, *, batch_size=128, device="auto"):
 
 
 @EmbeddingModel.predict_register("bert")
-def bert_predict(self, model_name="bert"):
+def bert_predict(self, model_name="bert", model_dir=EMBEDDING_MODELS_DIR):
     """Registered interface: return the three narrow analytics input frames.
 
-    The shared decorator accepts only the instance and model directory name.
-    The runner owns persistence and cache release.
+    `model_dir` defaults to `EMBEDDING_MODELS_DIR`. The runner owns persistence
+    and cache release.
     """
-    return _bert_encode_frames((self.train, self.valid, self.test), model_name)
+    return _bert_encode_frames(
+        (self.train, self.valid, self.test), model_name, model_dir=model_dir
+    )

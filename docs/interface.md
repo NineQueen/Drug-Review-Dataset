@@ -20,9 +20,9 @@ embedding 成员只改 `src/embeddings/<name>.py`：读取已有文本列，拟�
 
 `fit_phrases(train_df)` 只在训练集 `words` 上拟合，参数固定为 `min_count=20`、`scoring="npmi"`、`threshold=0.5`、`delimiter="_"`。它返回冻结规则，不另存短语目录，也不接收参数字典。`apply_phrases` 在新表上把 `words_nostop` 换成短语 token。构造 `EmbeddingModel(..., phrases)` 后得到 `train_phrase`、`valid_phrase`、`test_phrase`。`train_expanded` 把训练集词列与 WebMD 评论合并，并去掉验证集和测试集里已经出现的 `review`。`train_expanded_phrase` 套用同一份短语；没传入短语时不能读取。GloVe 在 `train_expanded_phrase` 上训练，并在三份短语表上预测。TF-IDF 读取 `self.train` 的 `words_featured`。
 
-划分用 `pmod(xxhash64(uniqueID, seed), 10000)`。`split` 的正整数比例有几项就切几份，例如 `(8, 2)` 或 `(7, 1, 2)`。默认 `(7, 1, 2)`：桶号小于 7000 为训练，7000 至 7999 为验证，8000 及以上为测试。不能整除 10000 时，余数进最后一份。`weight` 给一张表写入 `weight = n / (k * class_count)`，算完后卸掉输入表的缓存，通常只调用在拟合用的那一份上。默认 `SEED = 42`。固定数据、ID 类型、Spark 版本、seed 和比例后，归属不受行顺序影响。预处理后的样本集合变了，就统一重建下游结果。
+划分用 `pmod(xxhash64(uniqueID, seed), 10000)`。`split` 的正整数比例有几项就切几份，例如 `(8, 2)` 或 `(7, 1, 2)`。默认 `(7, 1, 2)`：桶号小于 7000 为训练，7000 至 7999 为验证，8000 及以上为测试。不能整除 10000 时，余数进最后一份。某一份的实际占比偏离请求占比超过该占比的一半时，`split` 报错；这表示这个 seed 已经切过这些行，桶发生了重叠。`weight` 给一张表写入归一化平方根权重 `n / (sqrt(class_count) * Σ sqrt(class_count))`，样本权重之和为 `n`，算完后卸掉输入表的缓存，通常只调用在拟合用的那一份上。种子只在 `src/seed.py`：`SEED = 42`，`seed(level)` 是 `SEED + level`。全表用 `seed(0)`，训练池上的 K 折用 `seed(1)`，折内早停用 `seed(2)`。固定数据、ID 类型、Spark 版本、seed 和比例后，归属不受行顺序影响。预处理后的样本集合变了，就统一重建下游结果。
 
-`KFold(model_name, df, k, prepare_function, SEED=42)` 用 `split(df, SEED, (1,) * k)`。每一折把其余份拼成拟合表，留出一份作验证表，调用 `prepare_function(fit, holdout)`，再把返回的两张表写到 `data/processed/temp/<model_name>/fold_<i>/`。每一折的新缓存放在 `data_oi.scope()` 里，写出后释放。`scope()` 卸掉块内新建的 DataFrame 缓存，包括 SQL 登记。`next_fold()` 读取下一折并卸掉上一折。`reset()` 回到第一折。`KFold.open(model_name, k)` 只读取已有目录。`df` 已经用同一个 seed 做过 7:1:2 时，这里换一个 seed。调参入口在训练池上使用 `SEED + 1`。K 折只有拟合和留出两份；embedding 和分类器的第三份都用拟合表的一行。
+`KFold(model_name, df, k, prepare_function, SEED=seed(1))` 用 `split(df, SEED, (1,) * k)`。每一折把其余份拼成拟合表，留出一份作验证表，调用 `prepare_function(fit, holdout)`，再把返回的两张表写到 `data/processed/temp/<model_name>/fold_<i>/`。每一折的新缓存放在 `data_oi.scope()` 里，写出后释放。`scope()` 卸掉块内新建的 DataFrame 缓存，包括 SQL 登记。`next_fold()` 读取下一折并卸掉上一折。`reset()` 回到第一折。`KFold.open(model_name, k)` 只读取已有目录。默认种子是 `seed(1)`，因为传入的表通常已经用 `seed(0)` 做过 7:1:2。K 折只有拟合和留出两份；embedding 和分类器的第三份都用拟合表的一行。
 
 embedding 上的三份表是 `self.train`、`self.valid`、`self.test`。
 
@@ -65,7 +65,7 @@ def my_embedding_predict(self, model_name: str = "my_embedding") -> tuple[DataFr
     # return transformed train, valid, test
 ```
 
-`model_name` 是磁盘目录名。`baseline_predict()` 不传名字时目录名是 `baseline`；主 notebook 传入 `tfidf` 和 `tfidf_improved`。
+`model_name` 是磁盘目录名。`baseline_predict()` 不传名字时目录名是 `baseline`；主 notebook 传入 `tfidf` 和 `tfidf_improved`。GloVe、Word2Vec 和 BERT 的 `train` / `predict` 还可以传 `model_dir`；省略时仍是 `EMBEDDING_MODELS_DIR / model_name`。
 
 构造函数是 `EmbeddingModel(train, valid, test, phrases=None)`。
 
@@ -108,7 +108,7 @@ def improved_baseline(self, para: dict | None = None) -> tuple[DataFrame, DataFr
 
 特征列写成模块常量，并调用 `self._feature_transform(FEATURES)`。只声明 `FEATURES` 不会自动组装。分类器在训练集上用 `labelCol="rating_p1"` 拟合。缩放器和降维器只作用于已组装的 `features`，并且只在训练集拟合。注册函数不保存分类器，也不为缺列或缺文件增加分支。
 
-三份预测按 train、valid、test 排列，每份恰好三列：`uniqueID`、`rating`（1–10）、`prediction`（double，取值 0–9）。`Scorer` 计算 `rating_pred = prediction + 1`。MAE / RMSE 用原始评分单位。
+三份预测按 train、valid、test 排列。每份含 `uniqueID`、`rating`（1–10）、`prediction`（double，取值 0–9）和 `probability`（长度为 10 的 `array<double>`，下标 `i` 是类别 `i`）。逻辑回归、随机森林、XGBoost 和 MLP 写入类别概率。SVM 的同一列是 10 个 one-vs-rest 间隔分数。`Scorer` 只使用 `prediction`，计算 `rating_pred = prediction + 1`。MAE / RMSE 用原始评分单位。
 
 ## 6. 保存、评分和入口
 
@@ -125,11 +125,19 @@ embedding 只保存自己的拟合表示。Spark 保存前只创建模型目录�
 
 `embedding_pipeline.ipynb` 训练选中的 `embedding_name`，名字来自 `train_registry` / `predict_registry`，再对 `AnalyticsModel.registry` 各调用一次。`analytics_pipeline.ipynb` 运行选中的 `register` 名，并遍历 `predict_registry`，因此不含 TF-IDF。`REBUILD = True` 时训练并保存这些表示，`False` 时调用 `load_embedding_data(name)`。两个入口都评 train、validation、test；汇报比较用 test。
 
-`experiments/para_tuning/para_tuning_pipeline.ipynb` 用 `getattr` 取写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL`。`REBUILD = True` 时先取默认训练池，再用 `SEED + 1` 做 K 折。`prepare_fold` 完成 `weight`、`encoder`、`fit_phrases` 和这个 embedding，返回拟合向量和留出向量。表示写到 `{EMBEDDING_MODEL}_para_{fold}`，折表写到 `data/processed/temp/{EMBEDDING_MODEL}_para/fold_<i>/`。`REBUILD = False` 时用 `KFold.open`。参数循环每次 `reset()` 后 `next_fold()`。参数按留出折的 support-weighted F1 平均值最大化，与评分表的 F1 相同。写入 `{EMBEDDING_MODEL}_{ANALYTICS_MODEL}.json` 时同时保存 `weighted_f1`。文件里已有分数时，只有新分数更高才覆盖；没有这个分数的已有文件保持原样。`load_analytics_para` 要求文件带有 `weighted_f1`，返回前去掉它和两个名字字段，所以返回值只含构造参数。向量写出前先卸掉编码表和扩展语料，否则 scope 会把还没写完的向量一起释放。
+`experiments/para_tuning/para_tuning_pipeline.ipynb` 用 `getattr` 取写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL`。`REBUILD = True` 时先取默认训练池，再用 `seed(1)` 做 K 折。`prepare_fold` 完成 `weight`、`encoder`、`fit_phrases` 和这个 embedding，返回拟合向量和留出向量。表示写到 `{EMBEDDING_MODEL}_para_{fold}`，折表写到 `data/processed/temp/{EMBEDDING_MODEL}_para/fold_<i>/`。`REBUILD = False` 时用 `KFold.open`。参数循环每次 `reset()` 后 `next_fold()`。参数按留出折的 support-weighted F1 平均值最大化，与评分表的 F1 相同。写入 `{EMBEDDING_MODEL}_{ANALYTICS_MODEL}.json` 时同时保存 `weighted_f1`。文件里已有分数时，只有新分数更高才覆盖；没有这个分数的已有文件保持原样。`load_analytics_para` 要求文件带有 `weighted_f1`，返回前去掉它和两个名字字段，所以返回值只含构造参数。向量写出前先卸掉编码表和扩展语料，否则 scope 会把还没写完的向量一起释放。
 
 `REBUILD` 的各阶段见 README。向量按注册名读取，目录里要同时有 train、valid、test。模型变化后重建受影响的下游结果。
 
-## 7. 交接前核对
+## 7. Stacking
+
+`StackingModel` 在 `src/stacking/stacking.py`，不进入 embedding 或 analytics 注册表。
+
+`load_data()` 读取 encoder 之前的 `data/processed/split/train_raw.parquet`。`KFold` 使用 `seed(1)`。每一折先 `weight` 再 `encoder`。只有 GloVe 在该折的 fit 上调用 `fit_phrases`。外层循环是 `predict_registry`，内层是 `registry`，所以未注册的模型不会进入。TF-IDF 和 logistic regression 不在这两个表里。每个分类器调用 `load_analytics_para(embedding, analytics)`，和主 notebook 一样。一次 embedding 的训练、预测和分类器写出放在同一个 `DataOI.scope()` 里，写出后退出。GloVe 内部缓存的完整帧和投影后的帧一起释放。折的 fit 和 holdout 在进入这个 scope 之前已经缓存，不会被卸掉。折内表示把 `model_dir` 设为 `data/processed/stacking/models`，写到 `stacking_f<fold>_<embedding>/`，分类器跑完由 `DataOI` 删除。全局的 `bert`、`glove`、`word2vec` 仍在 `src/embeddings/models`。留出折只保留 `uniqueID`、`rating`、`probability`，由 `DataOI` 合并到 `data/processed/stacking/oof/<analytics>__<embedding>/`。`manifest.json` 由 `DataOI` 读写。二层模型写到 `src/stacking/model/logistic/`。
+
+`train()` 按 `manifest.json` 里的顺序拼接这些长度为 10 的输出，得到 `features` 和 `rating_p1`。拟合与不加权 baseline 相同：`LogisticRegression(featuresCol="features", labelCol="rating_p1")`。十个类别时 Spark 使用多项逻辑回归。`predict()` 读取同名的全量预测，调用 `transform`，返回 train、valid、test。每份含 `uniqueID`、`rating`、`prediction` 和 `probability`，与逻辑回归的预测列相同。`Scorer` 仍用 `prediction + 1`。
+
+## 8. 交接前核对
 
 1. 只改了分配的模型文件；可选依赖和共享变更已经说明。
 2. embedding 的 train / predict 成对注册；analytics 只注册一个函数。导入包能发现它，导入本身不训练。

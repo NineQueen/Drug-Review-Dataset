@@ -89,10 +89,10 @@ def _configuration(overrides=None):
     return config
 
 
-def _model_path(model_name):
+def _model_path(model_name, model_dir=EMBEDDING_MODELS_DIR):
     if not isinstance(model_name, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", model_name) or "__" in model_name:
         raise ValueError("model_name must be lowercase with single underscores, without path separators")
-    return EMBEDDING_MODELS_DIR / model_name
+    return Path(model_dir) / model_name
 
 
 def _save_configuration(path, config, normalization):
@@ -107,10 +107,10 @@ def _save_configuration(path, config, normalization):
 
 
 @EmbeddingModel.train_register("word2vec")
-def word2vec_train(self, model_name="word2vec", *, config=None):
+def word2vec_train(self, model_name="word2vec", *, config=None, model_dir=EMBEDDING_MODELS_DIR):
     """Fit afresh on noun-normalized training words, preserving public columns."""
     actual = _configuration(config)
-    path = _model_path(model_name)
+    path = _model_path(model_name, model_dir)
     normalization = _normalization_metadata()
     from pyspark.sql import functions as F
     train = (_normalized_frame(self.train).select("uniqueID", TOKEN_COLUMN)
@@ -139,9 +139,9 @@ def _meanmax(tokens, vectors, dimension):
 
 
 @EmbeddingModel.predict_register("word2vec")
-def word2vec_predict(self, model_name="word2vec"):
+def word2vec_predict(self, model_name="word2vec", model_dir=EMBEDDING_MODELS_DIR):
     """Read this model's persisted config; registry wrapper narrows output columns."""
-    path = _model_path(model_name)
+    path = _model_path(model_name, model_dir)
     saved = json.loads((path / "embedding_config.json").read_text(encoding="utf-8"))
     if saved["format_version"] not in (1, 2) or saved["input_column"] != "words":
         raise ValueError("Unsupported Word2Vec embedding config")

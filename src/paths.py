@@ -5,6 +5,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TRAIN_PARQUET = "train.parquet"
 VALID_PARQUET = "valid.parquet"
 TEST_PARQUET = "test.parquet"
+TRAIN_RAW_PARQUET = "train_raw.parquet"
+
 TRAIN_PREDICTION_PARQUET = "train_predictions.parquet"
 VALID_PREDICTION_PARQUET = "valid_predictions.parquet"
 TEST_PREDICTION_PARQUET = "test_predictions.parquet"
@@ -22,5 +24,10 @@ SPLIT_DIR = ROOT / "data" / "processed" / "split"
 EMBEDDING_DIR = ROOT / "data" / "processed" / "embeddings"
 PREDICTION_DIR = ROOT / "data" / "processed" / "predictions"
 TEMP_DIR = ROOT / "data" / "processed" / "temp"
+# Out-of-fold base scores and fold embedding models for the second level.
+STACKING_DIR = ROOT / "data" / "processed" / "stacking"
+STACKING_EMBEDDING_DIR = STACKING_DIR / "models"
+STACKING_MANIFEST = "manifest.json"
+STACKING_MODEL_DIR = ROOT / "src" / "stacking" / "model"
 
 PARAMETER_DIR = ROOT / "data" / "parameter"

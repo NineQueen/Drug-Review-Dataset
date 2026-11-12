@@ -1,4 +1,5 @@
 import json
+import shutil
 import warnings
 from pathlib import Path
 
@@ -108,22 +109,28 @@ class DataOI:
         )
         return df_raw.select("Reviews").withColumnRenamed("Reviews","review")
 
-    def _require_train_test(self, directory: Path, train_name: str,valid_name: str, test_name: str) -> None:
-        train_path = directory / train_name
-        valid_path = directory / valid_name
-        test_path = directory / test_name
-        if not directory.is_dir() or not train_path.exists() or not valid_path.exists() or not test_path.exists():
-            raise FileNotFoundError(
-                f"{directory} must contain both {train_name}, {valid_name} and {test_name}"
-            )
+    def _require_train_test(self, directory: Path, *names: str) -> None:
+        if (
+            not names
+            or not directory.is_dir()
+            or any(not (directory / name).exists() for name in names)
+        ):
+            raise FileNotFoundError(f"{directory} must contain {', '.join(names)}")
 
-    def save_split_data(self, df_train: DataFrame, df_valid: DataFrame, df_test: DataFrame) -> None:
+    def save_split_data(self, df_train: DataFrame, df_valid: DataFrame, df_test: DataFrame,df_train_raw: DataFrame | None = None) -> None:
         """Save the training, validation, and test DataFrames as separate Parquet datasets."""
         if not paths.SPLIT_DIR.exists():
             paths.SPLIT_DIR.mkdir(parents=True)
         df_train.write.mode("overwrite").parquet(str(paths.SPLIT_DIR / paths.TRAIN_PARQUET))
         df_valid.write.mode("overwrite").parquet(str(paths.SPLIT_DIR / paths.VALID_PARQUET))
         df_test.write.mode("overwrite").parquet(str(paths.SPLIT_DIR / paths.TEST_PARQUET))
+        if df_train_raw is not None:
+            df_train_raw.write.mode("overwrite").parquet(str(paths.SPLIT_DIR / paths.TRAIN_RAW_PARQUET))
+
+    def load_raw_train_data(self) -> DataFrame:
+        self._require_train_test(paths.SPLIT_DIR, paths.TRAIN_RAW_PARQUET)
+        df_train_raw = self.spark.read.parquet(str(paths.SPLIT_DIR / paths.TRAIN_RAW_PARQUET)).cache()
+        return df_train_raw
 
     def load_split_data(self) -> tuple[DataFrame, DataFrame, DataFrame]:
         self._require_train_test(paths.SPLIT_DIR, paths.TRAIN_PARQUET, paths.VALID_PARQUET, paths.TEST_PARQUET)
@@ -152,7 +159,7 @@ class DataOI:
         target_path = paths.PREDICTION_DIR / model_name
         if not target_path.exists():
             target_path.mkdir(parents=True)
-        columns = ["uniqueID", "rating", "prediction"]
+        columns = ["uniqueID", "rating", "prediction", "probability"]
         frames = (
             (df_train, paths.TRAIN_PREDICTION_PARQUET),
             (df_valid, paths.VALID_PREDICTION_PARQUET),
@@ -193,6 +200,81 @@ class DataOI:
             valid_dict[name] = self.spark.read.parquet(str(model_dir / paths.VALID_PREDICTION_PARQUET))
             test_dict[name] = self.spark.read.parquet(str(model_dir / paths.TEST_PREDICTION_PARQUET))
         return train_dict, valid_dict, test_dict
+
+    def save_stacking_fold(self, model_name: str, fold: int, df: DataFrame) -> None:
+        """Write one holdout fold under `data/processed/stacking/folds/<model>/`."""
+        target_path = paths.STACKING_DIR / "folds" / model_name
+        if not target_path.exists():
+            target_path.mkdir(parents=True)
+        (
+            df.select("uniqueID", "rating", "probability")
+            .coalesce(4)
+            .write.mode("overwrite")
+            .parquet(str(target_path / f"fold_{fold}"))
+        )
+
+    def load_stacking_folds(self, model_name: str, folds: int) -> list[DataFrame]:
+        target_path = paths.STACKING_DIR / "folds" / model_name
+        names = tuple(f"fold_{index}" for index in range(folds))
+        self._require_train_test(target_path, *names)
+        return [self.spark.read.parquet(str(target_path / name)) for name in names]
+
+    def save_stacking_oof(self, model_name: str, df: DataFrame) -> None:
+        """Write the combined holdout scores for one analytics-embedding pair."""
+        target_path = paths.STACKING_DIR / "oof"
+        if not target_path.exists():
+            target_path.mkdir(parents=True)
+        (
+            df.select("uniqueID", "rating", "probability")
+            .coalesce(4)
+            .write.mode("overwrite")
+            .parquet(str(target_path / model_name))
+        )
+
+    def load_stacking_oof(self, model_names: list[str]) -> dict[str, DataFrame]:
+        frames = {}
+        for name in model_names:
+            self._require_train_test(paths.STACKING_DIR / "oof", name)
+            frames[name] = self.spark.read.parquet(str(paths.STACKING_DIR / "oof" / name))
+        return frames
+
+    def remove_stacking_folds(self) -> None:
+        directory = paths.STACKING_DIR / "folds"
+        if directory.exists():
+            shutil.rmtree(directory)
+
+    def remove_stacking_embedding(self, model_name: str) -> None:
+        """Delete one fold embedding saved under `data/processed/stacking/models`."""
+        if (
+            not model_name.startswith("stacking_f")
+            or "/" in model_name
+            or "\\" in model_name
+        ):
+            raise ValueError(f"refusing to remove {model_name}")
+        directory = paths.STACKING_EMBEDDING_DIR / model_name
+        if directory.exists():
+            shutil.rmtree(directory)
+
+    def save_stacking_manifest(self, pairs: list[str]) -> None:
+        if not paths.STACKING_DIR.exists():
+            paths.STACKING_DIR.mkdir(parents=True)
+        record = {"pairs": pairs}
+        (paths.STACKING_DIR / paths.STACKING_MANIFEST).write_text(json.dumps(record, indent=2) + "\n")
+
+    def load_stacking_manifest(self) -> list[str]:
+        record = json.loads((paths.STACKING_DIR / paths.STACKING_MANIFEST).read_text())
+        return list(record["pairs"])
+
+    def save_stacking_model(self, model) -> None:
+        """Write the fitted logistic model under `src/stacking/model/logistic`."""
+        if not paths.STACKING_MODEL_DIR.parent.exists():
+            paths.STACKING_MODEL_DIR.parent.mkdir(parents=True)
+        model.write().overwrite().save(str(paths.STACKING_MODEL_DIR))
+
+    def load_stacking_model(self):
+        from pyspark.ml.classification import LogisticRegressionModel
+
+        return LogisticRegressionModel.load(str(paths.STACKING_MODEL_DIR))
 
     def _analytics_para_file(self, embedding_model: str, analytics_model: str) -> Path:
         return paths.PARAMETER_DIR / f"{embedding_model}_{analytics_model}.json"

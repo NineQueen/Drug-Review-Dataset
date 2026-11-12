@@ -92,9 +92,14 @@ def svm(self: AnalyticsModel, para: dict | None = None) -> tuple[DataFrame, Data
                 F.when(condition, F.lit(c)) if prediction is None
                 else prediction.when(condition, F.lit(c))
             )
-        return scored.withColumn("prediction", prediction.cast("double"))
+        # Ten one-vs-rest margins. Index c is class c.
+        slots = {int(c): F.col(f"s_{c}") for c in classes}
+        return scored.withColumn("prediction", prediction.cast("double")).withColumn(
+            "probability",
+            F.array(*[slots[c] for c in range(10)]),
+        )
 
-    columns = ["uniqueID", "rating", "prediction"]
+    columns = ["uniqueID", "rating", "prediction", "probability"]
     predictions = (
         _predict(train_df).select(*columns),
         _predict(valid_df).select(*columns),

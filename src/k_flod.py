@@ -4,6 +4,7 @@ from pyspark.sql import DataFrame, SparkSession
 
 from src.dataOI import DataOI
 from src.paths import TEMP_DIR, TRAIN_PARQUET, VALID_PARQUET
+from src.seed import seed
 from src.split import split
 
 
@@ -16,7 +17,7 @@ class KFold:
         df: DataFrame,
         k: int,
         prepare_function: Callable[[DataFrame, DataFrame], tuple[DataFrame, DataFrame]],
-        SEED: int = 42,
+        SEED: int = seed(1),
     ) -> None:
         self.model_name = model_name
         self.k = k
