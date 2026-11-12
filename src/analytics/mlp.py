@@ -11,10 +11,10 @@ from src.analytics.base import AnalyticsModel
 
 FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_vec"]
 NUM_CLASSES = 10
+WEIGHT_POWER = 0.5
 
 DEFAULT_PARA = {
     "hidden_layers": (64, 32),
-    "weighted": True,
     "epochs": 50,
     "patience": 5,
     "min_delta": 0.0005,
@@ -28,7 +28,6 @@ DEFAULT_PARA = {
 }
 PARA_RANGE = {
     "hidden_layers": [(64,), (64, 32)],
-    "weighted": [False, True],
 }
 
 
@@ -36,7 +35,7 @@ class MLPTrainer:
     """Train minibatches and restore the best validation checkpoint."""
 
     def __init__(
-        self, train: DataFrame, hidden_layers: tuple[int, ...], weighted: bool,
+        self, train: DataFrame, hidden_layers: tuple[int, ...],
         *, epochs: int, batch_size: int,
         patience: int, min_delta: float,
         lr: float, betas: tuple[float, float], eps: float,
@@ -56,15 +55,11 @@ class MLPTrainer:
         self.mean = scaler.mean.toArray().astype(np.float32)
         self.scale = scaler.std.toArray().astype(np.float32)
         self.scale[self.scale == 0] = 1
-        columns = ["features", "rating_p1"]
-        if weighted:
-            columns.append(weight_col)
+        columns = ["features", "rating_p1", weight_col]
         self.rows = list(train.orderBy("uniqueID").select(*columns).toLocalIterator())
         self.targets = torch.tensor([row.rating_p1 for row in self.rows], dtype=torch.long)
-        self.weights = torch.tensor(
-            [row[weight_col] for row in self.rows] if weighted else np.ones(len(self.rows)),
-            dtype=torch.float32,
-        )
+        weights = np.asarray([row[weight_col] for row in self.rows], dtype=np.float32) ** WEIGHT_POWER
+        self.weights = torch.from_numpy(weights / weights.mean())
         layers = []
         width = len(self.mean)
         with torch.random.fork_rng(devices=[]):
