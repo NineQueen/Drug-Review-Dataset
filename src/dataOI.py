@@ -265,16 +265,14 @@ class DataOI:
         record = json.loads((paths.STACKING_DIR / paths.STACKING_MANIFEST).read_text())
         return list(record["pairs"])
 
-    def save_stacking_model(self, model) -> None:
-        """Write the fitted logistic model under `src/stacking/model/logistic`."""
-        if not paths.STACKING_MODEL_DIR.parent.exists():
-            paths.STACKING_MODEL_DIR.parent.mkdir(parents=True)
-        model.write().overwrite().save(str(paths.STACKING_MODEL_DIR))
+    def save_stacking_ordinal(self, record: dict) -> None:
+        """Write the ordinal logistic regression to `src/stacking/ordinal.json`."""
+        if not paths.STACKING_ORDINAL_FILE.parent.exists():
+            paths.STACKING_ORDINAL_FILE.parent.mkdir(parents=True)
+        paths.STACKING_ORDINAL_FILE.write_text(json.dumps(record, indent=2) + "\n")
 
-    def load_stacking_model(self):
-        from pyspark.ml.classification import LogisticRegressionModel
-
-        return LogisticRegressionModel.load(str(paths.STACKING_MODEL_DIR))
+    def load_stacking_ordinal(self) -> dict:
+        return json.loads(paths.STACKING_ORDINAL_FILE.read_text())
 
     def _analytics_para_file(self, embedding_model: str, analytics_model: str) -> Path:
         return paths.PARAMETER_DIR / f"{embedding_model}_{analytics_model}.json"

@@ -32,11 +32,11 @@ python -m nltk.downloader averaged_perceptron_tagger_eng wordnet
 
 ## 运行入口
 
-- `project.ipynb`：开头的 `RUN` 决定跑哪些阶段。`rebuild` 做 EDA、清洗、文本特征和编码后的 split。`train_embedding` 训练 `train_registry` 并保存模型。`predict_embedding` 读取这些模型并写出向量；模型已在磁盘上时可以不训练。`baseline` 跑只做分词的 TF-IDF（`tfidf` / `baseline()` / `lr__tfidf`）和带文本特征的 TF-IDF（`tfidf_improved` / `improved_baseline()` / `lr_improved__tfidf_improved`）。`analytics` 对已保存向量跑 `registry` 里的分类器。TF-IDF 不在这两个循环里。`load_stacking`、`train_stacking`、`predict_stacking` 依次做 out-of-fold、二层逻辑回归和全量预测，预测写到 `logistic__stacking`。后面的阶段读已保存文件，所以前面的开关可以关掉。需要短语的表示在构造 `EmbeddingModel` 前调用 `fit_phrases(df_train)`。
+- `project.ipynb`：开头的 `RUN` 决定跑哪些阶段。`rebuild` 做 EDA、清洗、文本特征和编码后的 split。`train_embedding` 训练 `train_registry` 并保存模型。`predict_embedding` 读取这些模型并写出向量；模型已在磁盘上时可以不训练。`baseline` 跑只做分词的 TF-IDF（`tfidf` / `baseline()` / `lr__tfidf`）和带文本特征的 TF-IDF（`tfidf_improved` / `improved_baseline()` / `lr_improved__tfidf_improved`）。`analytics` 对已保存向量跑 `registry` 里的分类器。TF-IDF 不在这两个循环里。`load_stacking`、`train_stacking`、`predict_stacking` 依次做 out-of-fold、二层拟合和全量预测。二层拟合有序逻辑回归，预测写到 `stacking__stacking`。后面的阶段读已保存文件，所以前面的开关可以关掉。需要短语的表示在构造 `EmbeddingModel` 前调用 `fit_phrases(df_train)`。
 - `experiments/embedding_pipeline.ipynb`：选择一个 `train_registry` 里的 `embedding_name`，再跑 `registry` 里的分类器。
 - `experiments/analytics_pipeline.ipynb`：选择一个 `register` 注册名。`REBUILD = True` 时训练已注册 embedding；`False` 时按注册名读取已有向量。
 - `experiments/para_tuning/para_tuning_pipeline.ipynb`：按写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL` 做 K 折调参。折向量写到 `data/processed/temp/`，不覆盖公共 split。
-- `src/stacking/stacking.py`：`load_data()` 在 encoder 之前的 `train_raw.parquet` 上做 3 折 out-of-fold。`train()` 只把已注册组合的 10 维输出拼成 `features`，再用与不加权 baseline 相同的 `LogisticRegression` 拟合。`predict()` 读取这些组合已经跑完的全量预测。
+- `src/stacking/stacking.py`：`load_data()` 在 encoder 之前的 `train_raw.parquet` 上做 3 折 out-of-fold。`train()` 把已注册组合的 10 维输出拼成 `features`，拟合有序逻辑回归。`predict()` 读取这些组合已经跑完的全量预测。
 
 主入口调用 `load_prediction_data()`，一次读取全部已保存预测。个人入口用 `load_prediction_data(model_names)` 只评这次运行的预测。最终比较看 test。
 
@@ -72,7 +72,7 @@ src/encoder.py                    condition / drug 编码
 src/embeddings/<name>.py          各 embedding
 src/analytics/<name>.py           各分类器
 src/stacking/stacking.py          二层 stacking
-src/stacking/model/               二层模型，训练后生成
+src/stacking/ordinal.json         有序逻辑回归，训练后生成
 src/evaluation.py                 评分
 src/dataOI.py                     读取、保存和缓存释放
 src/paths.py                      路径常量

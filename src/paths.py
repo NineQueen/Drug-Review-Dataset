@@ -28,6 +28,6 @@ TEMP_DIR = ROOT / "data" / "processed" / "temp"
 STACKING_DIR = ROOT / "data" / "processed" / "stacking"
 STACKING_EMBEDDING_DIR = STACKING_DIR / "models"
 STACKING_MANIFEST = "manifest.json"
-STACKING_MODEL_DIR = ROOT / "src" / "stacking" / "model"
+STACKING_ORDINAL_FILE = ROOT / "src" / "stacking" / "ordinal.json"
 
 PARAMETER_DIR = ROOT / "data" / "parameter"

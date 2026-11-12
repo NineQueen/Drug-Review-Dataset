@@ -133,9 +133,9 @@ embedding 只保存自己的拟合表示。Spark 保存前只创建模型目录�
 
 `StackingModel` 在 `src/stacking/stacking.py`，不进入 embedding 或 analytics 注册表。
 
-`load_data()` 读取 encoder 之前的 `data/processed/split/train_raw.parquet`。`KFold` 使用 `seed(1)`。每一折先 `weight` 再 `encoder`。只有 GloVe 在该折的 fit 上调用 `fit_phrases`。外层循环是 `predict_registry`，内层是 `registry`，所以未注册的模型不会进入。TF-IDF 和 logistic regression 不在这两个表里。每个分类器调用 `load_analytics_para(embedding, analytics)`，和主 notebook 一样。一次 embedding 的训练、预测和分类器写出放在同一个 `DataOI.scope()` 里，写出后退出。GloVe 内部缓存的完整帧和投影后的帧一起释放。折的 fit 和 holdout 在进入这个 scope 之前已经缓存，不会被卸掉。折内表示把 `model_dir` 设为 `data/processed/stacking/models`，写到 `stacking_f<fold>_<embedding>/`，分类器跑完由 `DataOI` 删除。全局的 `bert`、`glove`、`word2vec` 仍在 `src/embeddings/models`。留出折只保留 `uniqueID`、`rating`、`probability`，由 `DataOI` 合并到 `data/processed/stacking/oof/<analytics>__<embedding>/`。`manifest.json` 由 `DataOI` 读写。二层模型写到 `src/stacking/model/logistic/`。
+`load_data()` 读取 encoder 之前的 `data/processed/split/train_raw.parquet`。`KFold` 使用 `seed(1)`。每一折先 `weight` 再 `encoder`。只有 GloVe 在该折的 fit 上调用 `fit_phrases`。外层循环是 `predict_registry`，内层是 `registry`，所以未注册的模型不会进入。TF-IDF 和 logistic regression 不在这两个表里。每个分类器调用 `load_analytics_para(embedding, analytics)`，和主 notebook 一样。一次 embedding 的训练、预测和分类器写出放在同一个 `DataOI.scope()` 里，写出后退出。GloVe 内部缓存的完整帧和投影后的帧一起释放。折的 fit 和 holdout 在进入这个 scope 之前已经缓存，不会被卸掉。折内表示把 `model_dir` 设为 `data/processed/stacking/models`，写到 `stacking_f<fold>_<embedding>/`，分类器跑完由 `DataOI` 删除。全局的 `bert`、`glove`、`word2vec` 仍在 `src/embeddings/models`。留出折只保留 `uniqueID`、`rating`、`probability`，由 `DataOI` 合并到 `data/processed/stacking/oof/<analytics>__<embedding>/`。`manifest.json` 由 `DataOI` 读写。有序逻辑回归写到 `src/stacking/ordinal.json`。
 
-`train()` 按 `manifest.json` 里的顺序拼接这些长度为 10 的输出，得到 `features` 和 `rating_p1`。拟合与不加权 baseline 相同：`LogisticRegression(featuresCol="features", labelCol="rating_p1")`。十个类别时 Spark 使用多项逻辑回归。`predict()` 读取同名的全量预测，调用 `transform`，返回 train、valid、test。每份含 `uniqueID`、`rating`、`prediction` 和 `probability`，与逻辑回归的预测列相同。`Scorer` 仍用 `prediction + 1`。
+`train()` 按 `manifest.json` 里的顺序拼接这些长度为 10 的输出，得到 `features` 和 `rating_p1`。二层只有有序逻辑回归：一条线性分数加一组递增阈值。分数在折外样本上标准化，阈值 0 自由，其余间隔用 softplus 保证递增，类别概率由累计概率的差分得到。`predict()` 读取同名的全量预测，返回 train、valid、test。每份含 `uniqueID`、`rating`、`prediction` 和 `probability`。`Scorer` 仍用 `prediction + 1`。主 notebook 把这一份预测写到 `stacking__stacking`。
 
 ## 8. 交接前核对
 
