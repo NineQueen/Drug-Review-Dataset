@@ -8,15 +8,17 @@ from src.paths import EMBEDDING_MODELS_DIR
 
 
 @EmbeddingModel.baseline_train_register()
-def tfidf_train(self: EmbeddingModel, model_name: str = "baseline") -> None:
-    # Fit on `self.train` only. Downstream models read the column `embedding`.
+def tfidf_train(self: EmbeddingModel, model_name: str = "baseline", para: dict | None = None) -> None:
+    # Fit on `self.train` only. Passed keys override the CountVectorizer defaults.
+    paras = {
+        "inputCol": "words_featured",
+        "outputCol": "tf",
+        "vocabSize": 20000,
+        "minDF": 5,
+        **(para or {}),
+    }
     pipeline = Pipeline(stages=[
-        CountVectorizer(
-            inputCol="words_featured",
-            outputCol="tf",
-            vocabSize=20000,
-            minDF=5,
-        ),
+        CountVectorizer(**paras),
         IDF(inputCol="tf", outputCol="embedding"),
     ])
     tfidf_model = pipeline.fit(self.train)

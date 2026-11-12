@@ -39,7 +39,7 @@ def glove_predict(self: EmbeddingModel, model_name:str = "glove") -> tuple[DataF
     dimension = int(keyed.vector_size)
     del keyed, token_vectors
 
-    @F.udf(VectorUDT())
+    @F.udf(VectorUDT(), useArrow=False)
     def review_vector(tokens):
         known = broadcast_vectors.value
         vectors = [known.get(token) for token in tokens or []]

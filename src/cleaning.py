@@ -66,7 +66,6 @@ def data_cleaning(df: DataFrame) -> DataFrame:
     df = replace_condition_and_review(df)
     print("Applied configured `condition` repairs and HTML-entity decoding")
 
-    # `dropDuplicates` does not define which copy survives. Keep the greater `usefulCount`, then the greater `uniqueID`.
     df = df.withColumn("review", F.lower("review"))
     df_best = (
         df.groupBy("review")
@@ -77,8 +76,26 @@ def data_cleaning(df: DataFrame) -> DataFrame:
             F.col("best.uniqueID").alias("uniqueID"),
         )
     )
-    df = df.join(df_best, ["review", "usefulCount", "uniqueID"]).select(*df.columns)
-    print("Kept the row with the highest `usefulCount` for each `review`")
+    survivor = df.join(df_best, ["review", "usefulCount", "uniqueID"]).select(*df.columns)
+    survivor_key = survivor.select(
+        "review",
+        F.col("rating").alias("_rating"),
+        F.col("condition").alias("_condition"),
+        F.col("date").alias("_date"),
+    )
+    drug_names = (
+        df.join(survivor_key, "review")
+        .where(
+            F.col("rating").eqNullSafe(F.col("_rating"))
+            & F.col("condition").eqNullSafe(F.col("_condition"))
+            & F.col("date").eqNullSafe(F.col("_date"))
+        )
+        .groupBy("review")
+        .agg(F.sort_array(F.collect_set("drugName")).alias("drugNames"))
+    )
+    df = survivor.join(drug_names, "review")
+    print("Kept the highest `usefulCount` row for each `review`")
+    print("Collected `drugNames` whose rating, condition, and date match that row")
 
     # `usefulCount` is skewed and counts votes cast after the review was published.
     df = df.withColumn(

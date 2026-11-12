@@ -194,20 +194,47 @@ class DataOI:
             test_dict[name] = self.spark.read.parquet(str(model_dir / paths.TEST_PREDICTION_PARQUET))
         return train_dict, valid_dict, test_dict
 
-    def save_analytics_para(self, embedding_model: str, analytics_model: str, para: dict) -> None:
+    def _analytics_para_file(self, embedding_model: str, analytics_model: str) -> Path:
+        return paths.PARAMETER_DIR / f"{embedding_model}_{analytics_model}.json"
+
+    def save_analytics_para(
+        self,
+        embedding_model: str,
+        analytics_model: str,
+        para: dict,
+        weighted_f1: float,
+    ) -> bool:
+        """Write constructor values and the holdout weighted F1 that selected them.
+
+        An existing score is replaced only when `weighted_f1` is strictly higher.
+        A file that already exists without `weighted_f1` is left unchanged.
+        """
         if not paths.PARAMETER_DIR.exists():
             paths.PARAMETER_DIR.mkdir(parents=True)
-        file_name = paths.PARAMETER_DIR / f"{embedding_model}_{analytics_model}.json"
+        file_name = self._analytics_para_file(embedding_model, analytics_model)
+        if file_name.exists():
+            stored = json.loads(file_name.read_text()).get("weighted_f1")
+            if stored is None or not weighted_f1 > float(stored):
+                return False
         record = {
             "embedding_model": embedding_model,
             "analytics_model": analytics_model,
+            "weighted_f1": weighted_f1,
         }
         record.update(para)
+        record["embedding_model"] = embedding_model
+        record["analytics_model"] = analytics_model
+        record["weighted_f1"] = weighted_f1
         file_name.write_text(json.dumps(record, indent=2) + "\n")
+        return True
 
     def load_analytics_para(self, embedding_model: str, analytics_model: str) -> dict:
-        file_name = paths.PARAMETER_DIR / f"{embedding_model}_{analytics_model}.json"
+        """Return constructor values. A file without `weighted_f1` is refused."""
+        file_name = self._analytics_para_file(embedding_model, analytics_model)
         record = json.loads(file_name.read_text())
-        record.pop("embedding_model")
-        record.pop("analytics_model")
+        stored = record.get("weighted_f1")
+        if stored is None:
+            raise ValueError(f"{file_name.name} has no weighted_f1")
+        for key in ("embedding_model", "analytics_model", "weighted_f1"):
+            record.pop(key, None)
         return record

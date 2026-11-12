@@ -35,7 +35,7 @@ PARA_RANGE = {
 }
 
 
-@AnalyticsModel.register("random_forest")
+# @AnalyticsModel.register("random_forest")
 def random_forest(
     self: AnalyticsModel, para: dict | None = None
 ) -> tuple[DataFrame, DataFrame, DataFrame]:

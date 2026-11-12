@@ -158,10 +158,10 @@ class MLPTrainer:
 
 @AnalyticsModel.register("mlp")
 def mlp(
-    self: AnalyticsModel, para: dict = DEFAULT_PARA
+    self: AnalyticsModel, para: dict | None = None
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
     """Use the supplied validation frame for early stopping and return predictions."""
-    params = {**DEFAULT_PARA, **para}
+    params = {**DEFAULT_PARA, **(para or {})}
     train, valid, test = self._feature_transform(FEATURES)
     trainer = MLPTrainer(train, **params)
     trainer.fit(valid)

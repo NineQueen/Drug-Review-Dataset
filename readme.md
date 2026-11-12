@@ -32,12 +32,12 @@ python -m nltk.downloader averaged_perceptron_tagger_eng wordnet
 
 ## 运行入口
 
-- `project.ipynb`：EDA、预处理，然后训练 `train_registry` 里的 embedding 并评分 `registry` 里的分类器。TF-IDF 不在这个循环里。`BASELINE = True` 时，只做分词的 TF-IDF 存为 `tfidf`，只调用 `baseline()`，预测存为 `lr__tfidf`；带文本特征的 TF-IDF 存为 `tfidf_improved`，只调用 `improved_baseline()`，预测存为 `lr_improved__tfidf_improved`。需要短语的表示在构造 `EmbeddingModel` 前调用 `fit_phrases(df_train)`。
+- `project.ipynb`：开头的 `RUN` 决定跑哪些阶段。`rebuild` 做 EDA、清洗、文本特征和编码后的 split。`train_embedding` 训练 `train_registry` 并保存模型。`predict_embedding` 读取这些模型并写出向量；模型已在磁盘上时可以不训练。`baseline` 跑只做分词的 TF-IDF（`tfidf` / `baseline()` / `lr__tfidf`）和带文本特征的 TF-IDF（`tfidf_improved` / `improved_baseline()` / `lr_improved__tfidf_improved`）。`analytics` 对已保存向量跑 `registry` 里的分类器。TF-IDF 不在这两个循环里。后面的阶段读已保存文件，所以前面的开关可以关掉。需要短语的表示在构造 `EmbeddingModel` 前调用 `fit_phrases(df_train)`。
 - `experiments/embedding_pipeline.ipynb`：选择一个 `train_registry` 里的 `embedding_name`，再跑 `registry` 里的分类器。
 - `experiments/analytics_pipeline.ipynb`：选择一个 `register` 注册名。`REBUILD = True` 时训练已注册 embedding；`False` 时按注册名读取已有向量。
 - `experiments/para_tuning/para_tuning_pipeline.ipynb`：按写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL` 做 K 折调参。折向量写到 `data/processed/temp/`，不覆盖公共 split。
 
-主入口和个人入口只评这次运行的预测。`load_prediction_data(model_names)` 按本轮模型名读取；不传名字时仍可读取全部历史预测。最终比较看 test。
+主入口调用 `load_prediction_data()`，一次读取全部已保存预测。个人入口用 `load_prediction_data(model_names)` 只评这次运行的预测。最终比较看 test。
 
 ## 清洗和文本的边界
 
@@ -47,16 +47,16 @@ python -m nltk.downloader averaged_perceptron_tagger_eng wordnet
 
 ## 缓存
 
-`REBUILD` 只决定是否重建这个入口需要的输入，不决定模型是否训练。
+实验 notebook 里的 `REBUILD` 只决定是否重建这个入口需要的输入，不决定模型是否训练。主 notebook 用 `RUN`：`rebuild` 只重建输入，训练、预测、baseline 和分类器各自有开关。
 
 - 主 notebook 和 embedding 实验：`True` 从 CSV 做到编码后的 train、valid、test；`False` 读取已有 split。默认比例是 `(7, 1, 2)`。`weight` 只加在拟合用的那一份上。
 - analytics 实验：`True` 还会训练每一个已注册 embedding；`False` 按注册名读取向量。
 - 调参实验：`True` 在默认训练池上做 K 折，折向量写到 `data/processed/temp/{EMBEDDING_MODEL}_para/fold_<i>/`；`False` 用 `KFold.open` 读取。
 - 首次拉取没有 `data/processed/`，先重建。之后只改自己的模型时，可以复用匹配的输入缓存。
 - 改了清洗、文本特征、`replacement.json`、seed 或公共编码之后，重建 split 和全部下游结果。只改一个 embedding 时，更新它的向量和依赖它的分类器。只改分类器时，更新该模型的预测。
-- 主 notebook 复用 split 时，可以从划分单元格继续。直接 Run All 仍会执行原始数据和 EDA。
+- 主 notebook 复用 split 时，把 `RUN["rebuild"]` 设为 `False`。直接 Run All 仍会执行原始数据展示；EDA 跟 `rebuild` 走。
 
-现有 runner 默认会训练 embedding。只有表示与当前数据、编码和参数匹配时，才可以在个人实验里跳过对应的 `train` 调用。把 `REBUILD` 改成 `False` 不会跳过训练。
+主 notebook 把 `train_embedding` 设为 `False` 时跳过注册 embedding 的训练，`predict_embedding` 读取已保存模型。实验 notebook 默认仍会训练。把实验里的 `REBUILD` 改成 `False` 不会跳过训练。只有表示与当前数据、编码和参数匹配时，才可以跳过对应的 `train` 调用。
 
 ## 目录
 

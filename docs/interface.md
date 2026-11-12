@@ -41,7 +41,7 @@ embedding 上的三份表是 `self.train`、`self.valid`、`self.test`。
 
 每种模型一个顶层 `.py` 文件。注册名用小写字母、数字或一个下划线，不含 `__` 或路径分隔符。函数名不要重复。
 
-embedding 的 train 与 predict 使用同一个注册名。TF-IDF 用 `baseline_train_register` 和 `baseline_predict_register`，调用 `baseline_train()` 与 `baseline_predict()`，不进入 `train_registry` 或 `predict_registry`。普通分类器用 `register`。不加权 baseline 用 `baseline_register`，调用 `instance.baseline()`，不接收 `para`。加权 LR 用 `improved_baseline_register`，调用 `instance.improved_baseline(para=None)`；传入的键覆盖 `DEFAULT_PARA`，缺的键保留默认值。这两个函数都不在 `registry` 里。
+embedding 的 train 与 predict 使用同一个注册名。TF-IDF 用 `baseline_train_register` 和 `baseline_predict_register`，调用 `baseline_train()` 与 `baseline_predict()`，不进入 `train_registry` 或 `predict_registry`。`baseline_train(model_name, para=None)` 里传入的键覆盖 CountVectorizer 的 `inputCol`、`outputCol`、`vocabSize`、`minDF`，缺的键保留这些默认值。普通分类器用 `register`。不加权 baseline 用 `baseline_register`，调用 `instance.baseline()`，不接收 `para`。加权 LR 用 `improved_baseline_register`，调用 `instance.improved_baseline(para=None)`；传入的键覆盖 `DEFAULT_PARA`，缺的键保留默认值。这两个函数都不在 `registry` 里。
 
 主 notebook 的 baseline 段把只做分词的 TF-IDF 存为 `tfidf`，只调用 `baseline()`；把带文本特征的 TF-IDF 存为 `tfidf_improved`，只调用 `improved_baseline()`。共享 runner 对普通分类器调用 `AnalyticsModel.registry[key](instance)`，因此使用默认 `para`。个人调参可以传入同一形状的 `para`。
 
@@ -121,11 +121,11 @@ embedding 只保存自己的拟合表示。Spark 保存前只创建模型目录�
 
 普通组合名是 `analytics__embedding`，例如 `random_forest__glove`。主 notebook 的 baseline 段写出 `lr__tfidf` 和 `lr_improved__tfidf_improved`。评分表的列名是 `Embedding_Model` 和 `Analytic_Model`。行按这两个名字的字典序排列。指标是 accuracy、support-weighted precision 和 F1；support-weighted recall 与 accuracy 相同，不再单列。相同组合重加时只替换该组合。
 
-共享的 `train_register` 把已注册 embedding 的训练调用包在 `data_oi.scope()` 中，训练返回后释放新建缓存，保留进入作用域前已有的输入缓存。主入口记录成功写出的组合名，通过 `load_prediction_data(model_names)` 只读取这些预测，避免混入历史实验；不传 `model_names` 时保留读取全部预测的用法。
+共享的 `train_register` 把已注册 embedding 的训练调用包在 `data_oi.scope()` 中，训练返回后释放新建缓存，保留进入作用域前已有的输入缓存。主入口调用 `load_prediction_data()`，一次读取全部已保存预测。传入 `model_names` 时只读取列出的组合；个人入口用这个参数，避免混入历史实验。
 
 `embedding_pipeline.ipynb` 训练选中的 `embedding_name`，名字来自 `train_registry` / `predict_registry`，再对 `AnalyticsModel.registry` 各调用一次。`analytics_pipeline.ipynb` 运行选中的 `register` 名，并遍历 `predict_registry`，因此不含 TF-IDF。`REBUILD = True` 时训练并保存这些表示，`False` 时调用 `load_embedding_data(name)`。两个入口都评 train、validation、test；汇报比较用 test。
 
-`experiments/para_tuning/para_tuning_pipeline.ipynb` 用 `getattr` 取写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL`。`REBUILD = True` 时先取默认训练池，再用 `SEED + 1` 做 K 折。`prepare_fold` 完成 `weight`、`encoder`、`fit_phrases` 和这个 embedding，返回拟合向量和留出向量。表示写到 `{EMBEDDING_MODEL}_para_{fold}`，折表写到 `data/processed/temp/{EMBEDDING_MODEL}_para/fold_<i>/`。`REBUILD = False` 时用 `KFold.open`。参数循环每次 `reset()` 后 `next_fold()`。`METRIC` 取 `weighted_f1` 或 `accuracy`，都按留出折的平均值最大化。`weighted_f1` 与评分表的 support-weighted F1 相同，选出的参数写到 `{EMBEDDING_MODEL}_{ANALYTICS_MODEL}.json`。向量写出前先卸掉编码表和扩展语料，否则 scope 会把还没写完的向量一起释放。
+`experiments/para_tuning/para_tuning_pipeline.ipynb` 用 `getattr` 取写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL`。`REBUILD = True` 时先取默认训练池，再用 `SEED + 1` 做 K 折。`prepare_fold` 完成 `weight`、`encoder`、`fit_phrases` 和这个 embedding，返回拟合向量和留出向量。表示写到 `{EMBEDDING_MODEL}_para_{fold}`，折表写到 `data/processed/temp/{EMBEDDING_MODEL}_para/fold_<i>/`。`REBUILD = False` 时用 `KFold.open`。参数循环每次 `reset()` 后 `next_fold()`。参数按留出折的 support-weighted F1 平均值最大化，与评分表的 F1 相同。写入 `{EMBEDDING_MODEL}_{ANALYTICS_MODEL}.json` 时同时保存 `weighted_f1`。文件里已有分数时，只有新分数更高才覆盖；没有这个分数的已有文件保持原样。`load_analytics_para` 要求文件带有 `weighted_f1`，返回前去掉它和两个名字字段，所以返回值只含构造参数。向量写出前先卸掉编码表和扩展语料，否则 scope 会把还没写完的向量一起释放。
 
 `REBUILD` 的各阶段见 README。向量按注册名读取，目录里要同时有 train、valid、test。模型变化后重建受影响的下游结果。
 
