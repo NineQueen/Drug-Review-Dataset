@@ -1,0 +1,9 @@
+{
+  "embedding_model": "word2vec",
+  "analytics_model": "mlp",
+  "weighted_f1": 0.368649382706027,
+  "hidden_layers": [
+    64,
+    32
+  ]
+}

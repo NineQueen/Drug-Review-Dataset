@@ -1,0 +1,9 @@
+{
+  "embedding_model": "glove",
+  "analytics_model": "mlp",
+  "weighted_f1": 0.37159594940498064,
+  "hidden_layers": [
+    64,
+    32
+  ]
+}
