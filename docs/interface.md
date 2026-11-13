@@ -102,7 +102,7 @@ def improved_baseline(self, para: dict | None = None) -> tuple[DataFrame, DataFr
     ...  # weighted LR; passed keys override DEFAULT_PARA
 ```
 
-当前 logistic regression 和 SVM 的 `FEATURES` 含 `drugName_vec`。random forest 不含这一列。同一个分类器对所有 embedding 使用同一份特征列。
+当前 logistic regression 和 SVM 的 `FEATURES` 含 `drugName_vec`。random forest 不含这一列。同一个分类器对所有 embedding 使用同一份特征列。加权 `improved_baseline()` 固定 `standardization=False`。它先对 `embedding` 做 L2 归一，再用训练集的均值和标准差把 `days` 换成 z-score；验证集和测试集只套用这组 `days` 统计量。默认 `regParam` 是 `1e-5`，`maxIter` 是 300。不加权 `baseline()` 和其他分类器仍使用原来的 `embedding` 和 `days`。TF-IDF 的 `vocabSize` 默认是 20000；改进路径的训练调用也不少于 20000。
 
 构造 `AnalyticsModel` 时传入 embedding 名称和三份向量表。`embedding_model` 是注册名字符串，保存在 `self.embedding_model`。可读列是 `embedding`、`condition_idx`、`condition_vec`、`days`、`usefulCount_log`、`drugName_idx`、`drugName_vec`。可以少用其中几列。换表示时另建实例，仍然调用同一个函数。
 
@@ -133,9 +133,11 @@ embedding 只保存自己的拟合表示。Spark 保存前只创建模型目录�
 
 `StackingModel` 在 `src/stacking/stacking.py`，不进入 embedding 或 analytics 注册表。
 
-`load_data()` 读取 encoder 之前的 `data/processed/split/train_raw.parquet`。`KFold` 使用 `seed(1)`。每一折先 `weight` 再 `encoder`。只有 GloVe 在该折的 fit 上调用 `fit_phrases`。外层循环是 `predict_registry`，内层是 `registry`，所以未注册的模型不会进入。TF-IDF 和 logistic regression 不在这两个表里。每个分类器调用 `load_analytics_para(embedding, analytics)`，和主 notebook 一样。一次 embedding 的训练、预测和分类器写出放在同一个 `DataOI.scope()` 里，写出后退出。GloVe 内部缓存的完整帧和投影后的帧一起释放。折的 fit 和 holdout 在进入这个 scope 之前已经缓存，不会被卸掉。折内表示把 `model_dir` 设为 `data/processed/stacking/models`，写到 `stacking_f<fold>_<embedding>/`，分类器跑完由 `DataOI` 删除。全局的 `bert`、`glove`、`word2vec` 仍在 `src/embeddings/models`。留出折只保留 `uniqueID`、`rating`、`probability`，由 `DataOI` 合并到 `data/processed/stacking/oof/<analytics>__<embedding>/`。`manifest.json` 由 `DataOI` 读写。有序逻辑回归写到 `src/stacking/ordinal.json`。
+`load_data()` 读取 encoder 之前的 `data/processed/split/train_raw.parquet`。`KFold` 使用 `seed(1)`。每一折先 `weight` 再 `encoder`。只有 GloVe 在该折的 fit 上调用 `fit_phrases`。外层循环是 `predict_registry`，内层是 `registry`，所以未注册的模型不会进入这两个循环。每一折在这两个循环之后再单独训练改进 TF-IDF：`vocabSize` 为 20000，调用 `improved_baseline()`，参数来自 `load_analytics_para("baseline", "improved_baseline")`。这一组的名字是 `lr_improved__tfidf_improved`，加在已注册组合之后。不加权 `baseline()` 不进入 stacking。每个已注册分类器调用 `load_analytics_para(embedding, analytics)`，和主 notebook 一样。一次 embedding 的训练、预测和分类器写出放在同一个 `DataOI.scope()` 里，写出后退出。GloVe 内部缓存的完整帧和投影后的帧一起释放。折的 fit 和 holdout 在进入这个 scope 之前已经缓存，不会被卸掉。折内表示把 `model_dir` 设为 `data/processed/stacking/models`，写到 `stacking_f<fold>_<embedding>/`，分类器跑完由 `DataOI` 删除。改进 TF-IDF 使用同一个目录，不覆盖 `src/embeddings/models` 里的 `tfidf_improved`。全局的 `bert`、`glove`、`word2vec` 和正式 TF-IDF 仍在 `src/embeddings/models`。留出折只保留 `uniqueID`、`rating`、`probability`，由 `DataOI` 合并到 `data/processed/stacking/oof/<analytics>__<embedding>/`。`manifest.json` 由 `DataOI` 读写。二层 `PipelineModel` 由 `DataOI` 写到 `src/stacking/model/`，同目录保存 `stacking_meta.json`。
 
-`train()` 按 `manifest.json` 里的顺序拼接这些长度为 10 的输出，得到 `features` 和 `rating_p1`。二层只有有序逻辑回归：一条线性分数加一组递增阈值。分数在折外样本上标准化，阈值 0 自由，其余间隔用 softplus 保证递增，类别概率由累计概率的差分得到。`predict()` 读取同名的全量预测，返回 train、valid、test。每份含 `uniqueID`、`rating`、`prediction` 和 `probability`。`Scorer` 仍用 `prediction + 1`。主 notebook 把这一份预测写到 `stacking__stacking`。
+`train()` 只读取训练 OOF。按 `manifest.json` 的顺序把十组 10 维输出拼成 `features`。最后一组是 `lr_improved__tfidf_improved` 的类别概率。SVM 的原始分数不先变成概率。类别权重由这份 OOF 的 `rating_p1` 计数 `n_c` 计算：`raw_weight_c = n_c ** (-0.75)`，`normalizer = N / sum(n_c * raw_weight_c)`，`meta_weight_c = raw_weight_c * normalizer`，样本权重之和为 N。这列是 `meta_weight`，不使用也不改写共享的平方根权重。`StandardScaler(withMean=True, withStd=True)` 和多项逻辑回归只在训练 OOF 上拟合。逻辑回归读取 `scaled_features`、`rating_p1` 和 `meta_weight`，参数是 `family="multinomial"`、`standardization=False`、`regParam=0.1`、`elasticNetParam=0.0`、`maxIter=100`、`tol=1e-7`。十个类别必须都出现，否则报错，不补样本或先验。决策阈值按类别 0 到 9 设为训练先验的 0.1 次方，交给 Spark 的 `setThresholds`。`probability` 保持逻辑回归的原始概率。保存的对象是 `PipelineModel(stages=[scaler, lr])`。`stacking_meta.json` 记录拼接顺序、类别数、输入维数、权重指数 0.75、先验指数 0.1，以及按 0–9 排列的训练先验。加载时其中的 `pairs` 必须与当前 manifest 完全一致。这次训练新增的 DataFrame 缓存放在 `DataOI.scope()` 里，正常结束或异常退出都会释放。
+
+`predict()` 读取这十个组合已经保存的全量预测，其中改进基线读取主 notebook 写出的 `lr_improved__tfidf_improved`。对 train、valid、test 复用同一份拼接，再调用 `pipeline.transform()`。不平均折预测，也不保留折内分类器。返回的三份含 `uniqueID`、`rating`、`prediction` 和 `probability`。`prediction` 是 0–9 的 double，可以不同于概率的 argmax。`probability` 是按类别 0–9 排列的十维 `array<double>`。验证集和测试集不参与权重、标准化、分类器或阈值的拟合。`Scorer` 仍用 `prediction + 1`。主 notebook 把这一份预测写到 `stacking__stacking`。
 
 ## 8. 交接前核对
 

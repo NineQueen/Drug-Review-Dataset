@@ -3,6 +3,7 @@ import shutil
 import warnings
 from pathlib import Path
 
+from pyspark.ml import PipelineModel
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.types import DateType, IntegerType, StringType, StructField, StructType
 
@@ -265,14 +266,21 @@ class DataOI:
         record = json.loads((paths.STACKING_DIR / paths.STACKING_MANIFEST).read_text())
         return list(record["pairs"])
 
-    def save_stacking_ordinal(self, record: dict) -> None:
-        """Write the ordinal logistic regression to `src/stacking/ordinal.json`."""
-        if not paths.STACKING_ORDINAL_FILE.parent.exists():
-            paths.STACKING_ORDINAL_FILE.parent.mkdir(parents=True)
-        paths.STACKING_ORDINAL_FILE.write_text(json.dumps(record, indent=2) + "\n")
+    def save_stacking_model(self, model: PipelineModel, meta: dict) -> None:
+        """Write the second-level pipeline and `stacking_meta.json`."""
+        parent = paths.STACKING_MODEL_DIR.parent
+        if not parent.exists():
+            parent.mkdir(parents=True)
+        model.write().overwrite().save(str(paths.STACKING_MODEL_DIR))
+        meta_path = paths.STACKING_MODEL_DIR / "stacking_meta.json"
+        meta_path.write_text(json.dumps(meta, indent=2) + "\n")
 
-    def load_stacking_ordinal(self) -> dict:
-        return json.loads(paths.STACKING_ORDINAL_FILE.read_text())
+    def load_stacking_model(self) -> PipelineModel:
+        """Load the second-level pipeline when its pair order matches the manifest."""
+        meta = json.loads((paths.STACKING_MODEL_DIR / "stacking_meta.json").read_text())
+        if list(meta["pairs"]) != self.load_stacking_manifest():
+            raise ValueError("saved stacking pairs do not match the current manifest")
+        return PipelineModel.load(str(paths.STACKING_MODEL_DIR))
 
     def _analytics_para_file(self, embedding_model: str, analytics_model: str) -> Path:
         return paths.PARAMETER_DIR / f"{embedding_model}_{analytics_model}.json"

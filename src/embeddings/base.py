@@ -145,8 +145,8 @@ class EmbeddingModel:
     @classmethod
     def baseline_predict_register(cls):
         def decorator(function):
-            def predict(self, model_name: str = "baseline"):
-                train_df, valid_df, test_df = function(self, model_name)
+            def predict(self, model_name: str = "baseline", model_dir=EMBEDDING_MODELS_DIR):
+                train_df, valid_df, test_df = function(self, model_name, model_dir=model_dir)
                 return (
                     cls._model_columns(train_df),
                     cls._model_columns(valid_df),

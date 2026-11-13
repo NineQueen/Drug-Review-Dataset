@@ -1,0 +1,6 @@
+{
+  "embedding_model": "baseline",
+  "analytics_model": "improved_baseline",
+  "weighted_f1": 0.0,
+  "regParam": 1e-5
+}

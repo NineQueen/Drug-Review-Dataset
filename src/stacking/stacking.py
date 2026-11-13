@@ -1,8 +1,9 @@
-import numpy as np
-from pyspark.ml.functions import array_to_vector
+from pyspark.ml import PipelineModel
+from pyspark.ml.classification import LogisticRegression
+from pyspark.ml.feature import StandardScaler
+from pyspark.ml.functions import array_to_vector, vector_to_array
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
-from pyspark.sql.types import ArrayType, DoubleType, StructField, StructType
 
 from src import paths
 from src.analytics import AnalyticsModel
@@ -10,17 +11,20 @@ from src.dataOI import DataOI
 from src.embeddings import EmbeddingModel
 from src.encoder import encoder
 from src.k_flod import KFold
-from src.seed import SEED, seed
+from src.seed import seed
 from src.split import weight
 from src.text_features import fit_phrases
 
 
 K = 3
 NUM_CLASSES = 10
+WEIGHT_EXPONENT = 0.75
+PRIOR_EXPONENT = 0.1
+# Improved TF-IDF logistic regression stays outside both registries.
+# Its saved full-data predictions are `lr_improved__tfidf_improved`.
+IMPROVED_EMBEDDING = "tfidf_improved"
+IMPROVED_ANALYTICS = "lr_improved"
 # Hash levels: seed(0) cut this pool, seed(1) makes the folds, seed(2) is MLP's early stop.
-_ORDINAL_EPOCHS = 300
-_ORDINAL_LR = 0.01
-_ORDINAL_L2 = 1e-4
 
 
 class StackingModel:
@@ -32,7 +36,7 @@ class StackingModel:
         self.fold = fold
 
     def load_data(self) -> None:
-        """Build one out-of-fold score file for every registered pair."""
+        """Build one out-of-fold score file for every registered pair and improved baseline."""
         pairs = _registered_pairs()
         df_train_raw = self.data_oi.load_raw_train_data()
         raw_released = False
@@ -66,6 +70,7 @@ class StackingModel:
                             phrases,
                         )
                         del phrases
+                    self._run_improved_baseline(fold_index, df_fit, df_holdout, df_empty)
                 self._combine_oof(pairs, row_count)
             finally:
                 kfold.reset()
@@ -74,33 +79,30 @@ class StackingModel:
                 self.data_oi.unpersist(df_train_raw)
 
     def train(self) -> None:
-        """Fit the ordinal logistic regression on the out-of-fold scores."""
+        """Fit weighted multinomial logistic regression on the out-of-fold scores."""
         pair_names = self.data_oi.load_stacking_manifest()
-        features = _feature_frame(self.data_oi.load_stacking_oof(pair_names), pair_names).cache()
-        features.count()
-        try:
-            matrix, labels = _matrix_from_frame(features)
-            fitted = _fit_ordinal(matrix, labels)
-            self.data_oi.save_stacking_ordinal({"pairs": pair_names, **fitted})
-            print(
-                f"Ordinal logistic regression on {len(pair_names)} models, "
-                f"loss {fitted['train_loss']:.6f}"
-            )
-        finally:
-            self.data_oi.unpersist(features)
+        with self.data_oi.scope():
+            features = _feature_frame(
+                self.data_oi.load_stacking_oof(pair_names), pair_names
+            ).cache()
+            features.count()
+            pipeline, meta = _fit_weighted_lr(features, pair_names)
+            self.data_oi.save_stacking_model(pipeline, meta)
+        print(
+            f"Weighted multinomial logistic regression on {len(pair_names)} models, "
+            f"{meta['input_dim']} features"
+        )
 
     def predict(self) -> tuple[DataFrame, DataFrame, DataFrame]:
-        """Score the saved ordinal logistic regression on the full-data base predictions."""
+        """Score the saved pipeline on the full-data base predictions."""
         pair_names = self.data_oi.load_stacking_manifest()
-        ordinal = self.data_oi.load_stacking_ordinal()
+        pipeline = self.data_oi.load_stacking_model()
         train_frames, valid_frames, test_frames = self.data_oi.load_prediction_data(pair_names)
-        cached = tuple(
-            _feature_frame(frames, pair_names).cache()
-            for frames in (train_frames, valid_frames, test_frames)
+        return (
+            _score_frame(pipeline, _feature_frame(train_frames, pair_names)),
+            _score_frame(pipeline, _feature_frame(valid_frames, pair_names)),
+            _score_frame(pipeline, _feature_frame(test_frames, pair_names)),
         )
-        for frame in cached:
-            frame.count()
-        return tuple(_ordinal_frame(ordinal, frame) for frame in cached)
 
     def _run_embedding(
         self,
@@ -132,6 +134,43 @@ class StackingModel:
                         fold_index, embedding_name, analytics_name, cached
                     )
                 del embedding, cached, predicted
+        finally:
+            self.data_oi.remove_stacking_embedding(model_name)
+
+    def _run_improved_baseline(
+        self,
+        fold_index: int,
+        df_fit: DataFrame,
+        df_holdout: DataFrame,
+        df_empty: DataFrame,
+    ) -> None:
+        pair_name = f"{IMPROVED_ANALYTICS}__{IMPROVED_EMBEDDING}"
+        print(f"Fold {fold_index} {pair_name}")
+        model_name = f"stacking_f{fold_index}_{IMPROVED_EMBEDDING}"
+        model_dir = paths.STACKING_EMBEDDING_DIR
+        self.data_oi.remove_stacking_embedding(model_name)
+        try:
+            with self.data_oi.scope():
+                embedding = EmbeddingModel(df_fit, df_holdout, df_empty)
+                EmbeddingModel.baseline_train(
+                    embedding,
+                    model_name,
+                    model_dir=model_dir,
+                )
+                predicted = EmbeddingModel.baseline_predict(
+                    embedding, model_name, model_dir=model_dir
+                )
+                cached = tuple(frame.cache() for frame in predicted)
+                for frame in cached:
+                    frame.count()
+                # The notebook stores this para as baseline_improved_baseline.json.
+                para = self.data_oi.load_analytics_para("baseline", "improved_baseline")
+                model = AnalyticsModel(IMPROVED_EMBEDDING, *cached)
+                train_pred, holdout_pred, test_pred = model.improved_baseline(para)
+                self.data_oi.save_stacking_fold(pair_name, fold_index, holdout_pred)
+                del train_pred, test_pred, holdout_pred
+                model.release_features()
+                del model, cached, predicted, embedding
         finally:
             self.data_oi.remove_stacking_embedding(model_name)
 
@@ -182,11 +221,13 @@ class StackingModel:
 
 
 def _registered_pairs() -> list[tuple[str, str]]:
-    return [
+    pairs = [
         (embedding_name, analytics_name)
         for embedding_name in sorted(EmbeddingModel.predict_registry)
         for analytics_name in sorted(AnalyticsModel.registry)
     ]
+    pairs.append((IMPROVED_EMBEDDING, IMPROVED_ANALYTICS))
+    return pairs
 
 
 def _feature_frame(frames: dict[str, DataFrame], pair_names: list[str]) -> DataFrame:
@@ -212,102 +253,123 @@ def _feature_frame(frames: dict[str, DataFrame], pair_names: list[str]) -> DataF
     )
 
 
-def _matrix_from_frame(frame: DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    rows = list(frame.select("rating_p1", "features").toLocalIterator())
-    if not rows:
-        raise ValueError("out-of-fold scores have no rows")
-    labels = np.asarray([int(row.rating_p1) for row in rows], dtype=np.int64)
-    matrix = np.stack([np.asarray(row.features.toArray(), dtype=np.float64) for row in rows])
-    if labels.min() < 0 or labels.max() >= NUM_CLASSES:
-        raise ValueError("rating_p1 must be an integer from 0 to 9")
-    return matrix, labels
+def _training_summary(frame: DataFrame) -> tuple[list[int], int]:
+    """Return class counts in order 0..9 and the shared feature width."""
+    def width():
+        return F.size(vector_to_array("features"))
 
-
-def _fit_ordinal(features: np.ndarray, labels: np.ndarray) -> dict:
-    """Ordinal logistic regression: one linear score and increasing thresholds."""
-    import torch
-
-    torch.manual_seed(SEED)
-    features = np.asarray(features, dtype=np.float32)
-    mean = features.mean(axis=0)
-    scale = features.std(axis=0)
-    scale[scale < 1e-6] = 1.0
-    scaled = (features - mean) / scale
-    inputs = torch.tensor(scaled, dtype=torch.float32)
-    target_labels = torch.tensor(labels, dtype=torch.long)
-    levels = torch.arange(NUM_CLASSES - 1)
-    target = (target_labels.unsqueeze(1) > levels).to(torch.float32)
-    weight = torch.zeros(inputs.shape[1], dtype=torch.float32, requires_grad=True)
-    bias = torch.zeros((), dtype=torch.float32, requires_grad=True)
-    gap = float(np.log(np.exp(0.5) - 1.0))
-    raw = torch.tensor(
-        [-2.0, *([gap] * (NUM_CLASSES - 2))],
-        dtype=torch.float32,
-        requires_grad=True,
-    )
-    optimizer = torch.optim.Adam((weight, bias, raw), lr=_ORDINAL_LR)
-    loss_value = None
-    for _ in range(_ORDINAL_EPOCHS):
-        thresholds = _threshold_tensor(raw)
-        score = inputs @ weight + bias
-        logits = score.unsqueeze(1) - thresholds.unsqueeze(0)
-        loss = torch.nn.functional.binary_cross_entropy_with_logits(logits, target)
-        loss = loss + _ORDINAL_L2 * weight.square().mean()
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        loss_value = float(loss.detach())
-    thresholds = _threshold_tensor(raw).detach().numpy()
-    return {
-        "mean": mean.astype(np.float64).tolist(),
-        "scale": scale.astype(np.float64).tolist(),
-        "weight": weight.detach().numpy().astype(np.float64).tolist(),
-        "bias": float(bias.detach()),
-        "thresholds": thresholds.astype(np.float64).tolist(),
-        "train_loss": loss_value,
-        "epochs": _ORDINAL_EPOCHS,
-    }
-
-
-def _threshold_tensor(raw):
-    import torch
-
-    gaps = torch.nn.functional.softplus(raw[1:])
-    return torch.cumsum(torch.cat((raw[:1], gaps)), dim=0)
-
-
-def _ordinal_scores(features: np.ndarray, spec: dict) -> tuple[np.ndarray, np.ndarray]:
-    mean = np.asarray(spec["mean"], dtype=np.float64)
-    scale = np.asarray(spec["scale"], dtype=np.float64)
-    weight = np.asarray(spec["weight"], dtype=np.float64)
-    thresholds = np.asarray(spec["thresholds"], dtype=np.float64)
-    if features.shape[1] != weight.shape[0] or thresholds.shape != (NUM_CLASSES - 1,):
-        raise ValueError("saved ordinal model does not match these scores")
-    if np.any(np.diff(thresholds) < -1e-5):
-        raise ValueError("ordinal thresholds must not decrease")
-    score = (features - mean) / scale @ weight + float(spec["bias"])
-    greater = 1.0 / (1.0 + np.exp(-(score[:, None] - thresholds)))
-    probability = np.empty((len(features), NUM_CLASSES), dtype=np.float64)
-    probability[:, 0] = 1.0 - greater[:, 0]
-    probability[:, 1:-1] = greater[:, :-1] - greater[:, 1:]
-    probability[:, -1] = greater[:, -1]
-    return probability.argmax(axis=1).astype(np.float64), probability
-
-
-def _ordinal_frame(spec: dict, frame: DataFrame) -> DataFrame:
-    rows = list(frame.select("uniqueID", "rating", "features").toLocalIterator())
-    if not rows:
-        raise ValueError("base scores have no rows")
-    matrix = np.stack([np.asarray(row.features.toArray(), dtype=np.float64) for row in rows])
-    prediction, probability = _ordinal_scores(matrix, spec)
-    schema = StructType([
-        frame.schema["uniqueID"],
-        frame.schema["rating"],
-        StructField("prediction", DoubleType(), False),
-        StructField("probability", ArrayType(DoubleType(), False), False),
-    ])
-    records = [
-        (row.uniqueID, row.rating, float(label), [float(value) for value in vector])
-        for row, label, vector in zip(rows, prediction, probability)
+    columns = [
+        F.count("*").alias("rows"),
+        F.min(width()).alias("min_width"),
+        F.max(width()).alias("max_width"),
+        F.sum(F.when(width().isNull(), F.lit(1)).otherwise(F.lit(0))).alias("null_width"),
     ]
-    return frame.sparkSession.createDataFrame(records, schema)
+    for label in range(NUM_CLASSES):
+        matched = F.when(F.col("rating_p1") == F.lit(label), F.lit(1)).otherwise(F.lit(0))
+        columns.append(F.sum(matched).alias(f"c{label}"))
+    row = frame.agg(*columns).collect()[0]
+    counts = [int(row[f"c{label}"] or 0) for label in range(NUM_CLASSES)]
+    total = int(row["rows"])
+    covered = sum(counts)
+    if covered != total:
+        raise ValueError(
+            "training OOF rating_p1 must be an integer from 0 to "
+            f"{NUM_CLASSES - 1}; {total - covered} rows are outside that range"
+        )
+    missing = [label for label, count in enumerate(counts) if count == 0]
+    if missing:
+        raise ValueError(
+            f"training OOF is missing classes {missing}; priors and rows are not filled in"
+        )
+    if row["min_width"] is None or int(row["null_width"] or 0) != 0:
+        raise ValueError("stacked features are missing")
+    min_width = int(row["min_width"])
+    max_width = int(row["max_width"])
+    if min_width != max_width:
+        raise ValueError(f"stacked feature width is not constant: {min_width} to {max_width}")
+    return counts, min_width
+
+
+def _meta_weights(counts: list[int]) -> list[float]:
+    """Class weights from n_c ** -0.75, scaled so the sample weights sum to N."""
+    total = float(sum(counts))
+    raw = [count ** (-WEIGHT_EXPONENT) for count in counts]
+    normalizer = total / sum(count * raw_weight for count, raw_weight in zip(counts, raw))
+    return [raw_weight * normalizer for raw_weight in raw]
+
+
+def _weight_column(weights: list[float]):
+    entries = []
+    for label, value in enumerate(weights):
+        entries.extend((F.lit(label), F.lit(float(value))))
+    return F.create_map(*entries)[F.col("rating_p1").cast("int")]
+
+
+def _check_weight_sum(frame: DataFrame, total: int) -> None:
+    row = frame.agg(
+        F.count("*").alias("rows"),
+        F.sum("meta_weight").alias("weight_sum"),
+    ).collect()[0]
+    rows = int(row["rows"])
+    weight_sum = float(row["weight_sum"])
+    if rows != total or abs(weight_sum - total) > 1e-5 * total + 1e-4:
+        raise ValueError(f"meta weights sum to {weight_sum} over {rows} rows; expected {total}")
+
+
+def _fit_weighted_lr(features: DataFrame, pair_names: list[str]) -> tuple[PipelineModel, dict]:
+    counts, width = _training_summary(features)
+    expected = len(pair_names) * NUM_CLASSES
+    if width != expected:
+        raise ValueError(
+            f"stacked features have dimension {width}; "
+            f"{len(pair_names)} models need {expected}"
+        )
+    total = sum(counts)
+    weights = _meta_weights(counts)
+    priors = [count / total for count in counts]
+    weighted = features.withColumn("meta_weight", _weight_column(weights))
+    _check_weight_sum(weighted, total)
+    scaler_model = StandardScaler(
+        inputCol="features",
+        outputCol="scaled_features",
+        withMean=True,
+        withStd=True,
+    ).fit(weighted)
+    lr_model = LogisticRegression(
+        featuresCol="scaled_features",
+        labelCol="rating_p1",
+        weightCol="meta_weight",
+        family="multinomial",
+        standardization=False,
+        regParam=0.1,
+        elasticNetParam=0.0,
+        maxIter=100,
+        tol=1e-7,
+    ).fit(scaler_model.transform(weighted))
+    # thresholds[c] = prior_c ** 0.1, listed from class 0 through class 9.
+    lr_model = lr_model.setThresholds([float(prior ** PRIOR_EXPONENT) for prior in priors])
+    if int(lr_model.numFeatures) != expected or int(lr_model.numClasses) != NUM_CLASSES:
+        raise ValueError(
+            f"fitted logistic regression has {lr_model.numFeatures} features and "
+            f"{lr_model.numClasses} classes"
+        )
+    pipeline = PipelineModel(stages=[scaler_model, lr_model])
+    meta = {
+        "pairs": list(pair_names),
+        "num_classes": NUM_CLASSES,
+        "input_dim": width,
+        "weight_exponent": WEIGHT_EXPONENT,
+        "prior_exponent": PRIOR_EXPONENT,
+        "priors": priors,
+    }
+    return pipeline, meta
+
+
+def _score_frame(pipeline: PipelineModel, frame: DataFrame) -> DataFrame:
+    scored = pipeline.transform(frame)
+    return scored.select(
+        "uniqueID",
+        "rating",
+        F.col("prediction").cast("double").alias("prediction"),
+        vector_to_array("probability").alias("probability"),
+    )
