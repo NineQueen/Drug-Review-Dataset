@@ -1,0 +1,7 @@
+{
+  "embedding_model": "bert",
+  "analytics_model": "svm",
+  "weighted_f1": 0.3547340620724675,
+  "alpha": 0.78,
+  "regParam": 0.04
+}

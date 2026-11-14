@@ -1,0 +1,7 @@
+{
+  "embedding_model": "word2vec",
+  "analytics_model": "svm",
+  "weighted_f1": 0.3585037284240144,
+  "alpha": 0.8,
+  "regParam": 0.04
+}

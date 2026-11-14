@@ -1,0 +1,7 @@
+{
+  "embedding_model": "glove",
+  "analytics_model": "svm",
+  "weighted_f1": 0.3613515793536918,
+  "alpha": 0.78,
+  "regParam": 0.02
+}
