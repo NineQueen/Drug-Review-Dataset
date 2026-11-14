@@ -87,4 +87,4 @@ The result name is `{analytics}__{embedding}`.
 
 ## Check before handoff
 
-The assigned file is the only model file changed. Train and predict share one embedding key. An analytics key is one function. Import does not train. IDs and row counts are preserved. Validation and test do not fit anything. `data/processed/` and notebook outputs stay out of Git. Restart the kernel after adding or editing a registered module.
+The assigned file is the only model file changed. Train and predict share one embedding key. An analytics key is one function. Import does not train. IDs and row counts are preserved. Validation and test do not fit anything. Split, embedding frames, and temp files under `data/processed/` stay out of Git. Prediction frames and stacking outputs are kept. Notebook outputs stay out of Git. Restart the kernel after adding or editing a registered module.

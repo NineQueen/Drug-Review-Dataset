@@ -16,7 +16,7 @@ Create the environment with `conda create -n DataEnv python=3.12` if it is missi
 
 The delivered Word2Vec model uses NLTK 3.9.3 and checks the noun-lemmatizer resource fingerprint. Run the download once on this machine. Spark Python workers must be able to read the same resources. After an NLTK upgrade or a resource change, retrain Word2Vec.
 
-Raw data is `data/raw/drugsComTrain_raw.csv`. Replacements are in `replacement.json`. Raw data and fitted embeddings are part of the repository. `data/processed/` is a local cache and stays out of Git. Classifiers are not saved as model files. Start notebooks from the repository root. Imports also walk upward to `src/` and `project.ipynb`, so a notebook started in `experiments/` can still import the shared package.
+Raw data is `data/raw/drugsComTrain_raw.csv`. Replacements are in `replacement.json`. Raw data and fitted embeddings are part of the repository. Split, embedding frames, and temp files under `data/processed/` stay out of Git. Prediction frames and stacking outputs are kept. Classifiers are not saved as model files. Start notebooks from the repository root. Imports also walk upward to `src/` and `project.ipynb`, so a notebook started in `experiments/` can still import the shared package.
 
 `project.ipynb` uses `local[4]` and a `16g` driver. Experiment notebooks set their own master and memory in the first cell. The entry notebook creates the Spark session once. Restart the kernel after changing driver memory, after a `Connection refused` JVM exit, or after editing an imported `src/` function.
 
@@ -75,4 +75,4 @@ src/embeddings/models/            fitted representations
 data/processed/                   local split, vectors, predictions, and OOF
 ```
 
-Commit the model implementation, fitted embeddings, and agreed dependency changes. Do not commit classifier files, `data/processed/`, or notebook outputs.
+Commit the model implementation, fitted embeddings, prediction frames, stacking outputs, and agreed dependency changes. Do not commit classifier files, split, embedding frames, temp caches, or notebook outputs.

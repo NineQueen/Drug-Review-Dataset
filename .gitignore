@@ -6,4 +6,6 @@ __pycache__/
 
 data/processed/*
 !data/processed/.gitkeep
+!data/processed/predictions/
+!data/processed/stacking/
 data/raw/webmd.csv

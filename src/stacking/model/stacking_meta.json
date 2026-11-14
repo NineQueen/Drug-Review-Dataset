@@ -1,0 +1,30 @@
+{
+  "pairs": [
+    "mlp__bert",
+    "svm__bert",
+    "xgboost__bert",
+    "mlp__glove",
+    "svm__glove",
+    "xgboost__glove",
+    "mlp__word2vec",
+    "svm__word2vec",
+    "xgboost__word2vec",
+    "lr_improved__tfidf_improved"
+  ],
+  "num_classes": 10,
+  "input_dim": 100,
+  "weight_exponent": 0.75,
+  "prior_exponent": 0.0,
+  "priors": [
+    0.1354370179948586,
+    0.042197943444730074,
+    0.04,
+    0.030822622107969152,
+    0.049717223650385604,
+    0.03889460154241645,
+    0.05895886889460154,
+    0.11775064267352185,
+    0.1699228791773779,
+    0.3162982005141388
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "pairs": [
+    "mlp__bert",
+    "svm__bert",
+    "xgboost__bert",
+    "mlp__glove",
+    "svm__glove",
+    "xgboost__glove",
+    "mlp__word2vec",
+    "svm__word2vec",
+    "xgboost__word2vec",
+    "lr_improved__tfidf_improved"
+  ]
+}

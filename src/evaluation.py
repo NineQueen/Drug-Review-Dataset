@@ -73,7 +73,27 @@ class Scorer:
         return self
 
     def show_metrics(self, **kwargs) -> None:
-        displayed = self.score.orderBy("Embedding_Model", "Analytic_Model")
+        # Baselines stay first and stacking stays last. Other rows keep name order.
+        group = (
+            F.when(
+                (F.col("Embedding_Model") == "tfidf") & (F.col("Analytic_Model") == "lr"),
+                F.lit(0),
+            )
+            .when(
+                (F.col("Embedding_Model") == "tfidf_improved")
+                & (F.col("Analytic_Model") == "lr_improved"),
+                F.lit(1),
+            )
+            .when(
+                (F.col("Embedding_Model") == "stacking")
+                & (F.col("Analytic_Model") == "stacking"),
+                F.lit(3),
+            )
+            .otherwise(F.lit(2))
+        )
+        displayed = self.score.withColumn("_group", group).orderBy(
+            "_group", "Embedding_Model", "Analytic_Model"
+        ).drop("_group")
         for metric in self.metric_names:
             displayed = displayed.withColumn(metric, F.format_string("%.8f", F.col(metric)))
         displayed.show(**kwargs)
