@@ -1,6 +1,6 @@
 {
   "embedding_model": "baseline",
   "analytics_model": "improved_baseline",
-  "weighted_f1": 0.0,
+  "weighted_f1": 0.40,
   "regParam": 1e-5
 }

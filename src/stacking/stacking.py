@@ -19,7 +19,7 @@ from src.text_features import fit_phrases
 K = 3
 NUM_CLASSES = 10
 WEIGHT_EXPONENT = 0.75
-PRIOR_EXPONENT = 0.1
+PRIOR_EXPONENT = 0.0
 # Improved TF-IDF logistic regression stays outside both registries.
 # Its saved full-data predictions are `lr_improved__tfidf_improved`.
 IMPROVED_EMBEDDING = "tfidf_improved"
@@ -341,12 +341,12 @@ def _fit_weighted_lr(features: DataFrame, pair_names: list[str]) -> tuple[Pipeli
         weightCol="meta_weight",
         family="multinomial",
         standardization=False,
-        regParam=0.1,
+        regParam=0.3,
         elasticNetParam=0.0,
         maxIter=100,
         tol=1e-7,
     ).fit(scaler_model.transform(weighted))
-    # thresholds[c] = prior_c ** 0.1, listed from class 0 through class 9.
+    # thresholds[c] = prior_c ** 0.0, listed from class 0 through class 9.
     lr_model = lr_model.setThresholds([float(prior ** PRIOR_EXPONENT) for prior in priors])
     if int(lr_model.numFeatures) != expected or int(lr_model.numClasses) != NUM_CLASSES:
         raise ValueError(

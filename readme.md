@@ -1,10 +1,10 @@
 # DSAI4205 Big Data Analytics — UCI Drug Review
 
-用 PySpark 把药品评论的 `rating` 分成 1–10 十类。共享实现在 `src/`，集成入口是 `project.ipynb`。指定 baseline 是 TF-IDF 加不加权 Logistic Regression，另有一份加权 LR。列、注册和输出约定见 [docs/interface.md](docs/interface.md)。AI 的修改边界见 [AGENTS.md](AGENTS.md)。
+Predict drug-review `rating` as ten classes, 1–10, with PySpark. Shared code is in `src/`. The integration notebook is `project.ipynb`. The required baseline is TF-IDF with unweighted logistic regression; a weighted logistic regression is trained separately. Columns, registration, and outputs are in [docs/interface.md](docs/interface.md).
 
-## 环境与数据
+## Setup
 
-已验证的组合是 Python 3.12、PySpark 4.2.0、Java 21。把 `JAVA_HOME` 指到 Java 21。`DataEnv` 只是本机环境名。Jupyter 要选装了依赖的同一个 Python。
+Python 3.12, PySpark 4.2.0, and Java 21. Point `JAVA_HOME` at Java 21. `DataEnv` is only the local environment name. The Jupyter kernel must be that same Python.
 
 ```bash
 conda activate DataEnv
@@ -12,75 +12,67 @@ python -m pip install -r requirements.txt
 python -m nltk.downloader averaged_perceptron_tagger_eng wordnet
 ```
 
-没有这个环境时，先执行 `conda create -n DataEnv python=3.12`。编辑器提示缺少 `ipykernel` 时，在该环境里安装它。
+Create the environment with `conda create -n DataEnv python=3.12` if it is missing, and install `ipykernel` there if the editor asks for it.
 
-交付的 Word2Vec 使用 NLTK 3.9.3，并核对名词词形还原所用资源的指纹。上面的下载步骤在本机运行一次；Spark Python worker 也要能读取这些资源。升级 NLTK 或替换资源后，需要重新训练对应的 Word2Vec，不能直接复用旧模型。
+The delivered Word2Vec model uses NLTK 3.9.3 and checks the noun-lemmatizer resource fingerprint. Run the download once on this machine. Spark Python workers must be able to read the same resources. After an NLTK upgrade or a resource change, retrain Word2Vec.
 
-源文件是 `data/raw/drugsComTrain_raw.csv`，替换表是 `replacement.json`。源数据和拟合好的 embedding 随仓库交接。`data/processed/` 是本机缓存，不进 Git。分类器不另存模型文件。从仓库根目录启动 notebook。入口也会向上寻找 `src/` 和 `project.ipynb`，所以从本仓库的 `experiments/` 启动可以导入共享代码。
+Raw data is `data/raw/drugsComTrain_raw.csv`. Replacements are in `replacement.json`. Raw data and fitted embeddings are part of the repository. `data/processed/` is a local cache and stays out of Git. Classifiers are not saved as model files. Start notebooks from the repository root. Imports also walk upward to `src/` and `project.ipynb`, so a notebook started in `experiments/` can still import the shared package.
 
-`project.ipynb` 使用 `local[4]` 和 `16g` driver。实验 notebook 在自己的第一个单元格里设置 master 和内存。SparkSession 由入口创建一次。改过 driver memory，或 JVM 退出并出现 `Connection refused` 之后，重启 kernel。改过已导入的 `src/` 函数后也要重启；只重新执行 import 会继续用旧模块。
+`project.ipynb` uses `local[4]` and a `16g` driver. Experiment notebooks set their own master and memory in the first cell. The entry notebook creates the Spark session once. Restart the kernel after changing driver memory, after a `Connection refused` JVM exit, or after editing an imported `src/` function.
 
-## 各自改什么
+## What to edit
 
-成员实现分配给自己的一个模型文件。基类、包入口、公共预处理和主 notebook 的循环由集成人维护。
+Each member edits one assigned model file. Shared preprocessing, base classes, and the main notebook stay with the integrator.
 
-- embedding：`src/embeddings/<name>.py`，输出向量列 `embedding`。
-- analytics：`src/analytics/<name>.py`。读取 `embedding` 和已编码的非文本列，在训练集上拟合并返回三份预测。文件给出 `DEFAULT_PARA` 和 `PARA_RANGE`。
-- 集成人：公共流程、依赖、文档和最终汇总。共享数据或接口要改时，由集成人协调。
+- Embedding: `src/embeddings/<name>.py`. Write a vector column named `embedding`.
+- Analytics: `src/analytics/<name>.py`. Read `embedding` and the encoded non-text columns, fit on the training frame, and return three prediction frames. The file defines `DEFAULT_PARA` and `PARA_RANGE`.
+- Integrator: shared pipeline, dependencies, documentation, and the final assembly.
 
-模型用装饰器注册。在已有实验 notebook 里选择自己的注册名。可选依赖放在使用它的函数里导入，并交给集成人写入 `requirements.txt`。
+Register a model with its decorator and select that name in the existing experiment notebook. Import optional libraries inside the functions that use them, and add new dependencies to `requirements.txt`.
 
-## 运行入口
+## Entry points
 
-- `project.ipynb`：开头的 `RUN` 决定跑哪些阶段。`rebuild` 做 EDA、清洗、文本特征和编码后的 split。`train_embedding` 训练 `train_registry` 并保存模型。`predict_embedding` 读取这些模型并写出向量；模型已在磁盘上时可以不训练。`baseline` 跑只做分词的 TF-IDF（`tfidf` / `baseline()` / `lr__tfidf`）和带文本特征的 TF-IDF（`tfidf_improved` / `improved_baseline()` / `lr_improved__tfidf_improved`）。`analytics` 对已保存向量跑 `registry` 里的分类器。TF-IDF 不在这两个循环里。`load_stacking`、`train_stacking`、`predict_stacking` 依次做 out-of-fold、二层拟合和全量预测。二层拟合加权多项逻辑回归，预测写到 `stacking__stacking`。后面的阶段读已保存文件，所以前面的开关可以关掉。需要短语的表示在构造 `EmbeddingModel` 前调用 `fit_phrases(df_train)`。
-- `experiments/embedding_pipeline.ipynb`：选择一个 `train_registry` 里的 `embedding_name`，再跑 `registry` 里的分类器。
-- `experiments/analytics_pipeline.ipynb`：选择一个 `register` 注册名。`REBUILD = True` 时训练已注册 embedding；`False` 时按注册名读取已有向量。
-- `experiments/para_tuning/para_tuning_pipeline.ipynb`：按写下的 `EMBEDDING_MODEL` 和 `ANALYTICS_MODEL` 做 K 折调参。折向量写到 `data/processed/temp/`，不覆盖公共 split。
-- `src/stacking/stacking.py`：`load_data()` 在 encoder 之前的 `train_raw.parquet` 上做 3 折 out-of-fold，并在每一折额外加入 `lr_improved__tfidf_improved`。`train()` 按 manifest 顺序把这些组合的 10 维输出拼成 `features`，只在训练 OOF 上拟合带独立 `meta_weight` 的多项逻辑回归，并由 `DataOI` 写到 `src/stacking/model/`。`predict()` 读取这些组合已经跑完的全量预测。
+`project.ipynb` uses `RUN`:
 
-主入口调用 `load_prediction_data()`，一次读取全部已保存预测。个人入口用 `load_prediction_data(model_names)` 只评这次运行的预测。最终比较看 test。
+- `rebuild` prepares EDA, cleaning, text features, and the encoded split.
+- `train_embedding` fits `train_registry` and saves the models.
+- `predict_embedding` loads those models and writes vectors.
+- `baseline` runs tokenizer-only TF-IDF (`tfidf` / `baseline()` / `lr__tfidf`) and engineered-text TF-IDF (`tfidf_improved` / `improved_baseline()` / `lr_improved__tfidf_improved`).
+- `analytics` runs every classifier in `registry` on the saved vectors. TF-IDF is outside both loops.
+- `load_stacking`, `train_stacking`, and `predict_stacking` build out-of-fold scores, fit the second-level model, and write `stacking__stacking`.
 
-## 清洗和文本的边界
+A later stage reads saved files, so an earlier switch can stay off. Call `fit_phrases(df_train)` before constructing `EmbeddingModel` when the representation needs phrases.
 
-`data_cleaning()` 做行过滤、已配置的替换、成对外层引号、空白、小写、确定性去重，并生成 `days`、`usefulCount_log`、`rating_p1`。`text_feature_engineering()` 把空白、缩写和剂量修复写回 `review`，再在临时列上分词；停用词步骤保留否定词和程度词。主 notebook 打开 bigrams。`baseline_text_feature_engineering()` 只对 `review` 做 Tokenizer，给上面的 `tfidf` 路径用。`fit_phrases(train_df)` 只在训练集 `words` 上拟合短语，不写回公共文本列。具体规则见 [docs/interface.md](docs/interface.md)。
+Other entries:
 
-文本修复用通用规则，不建数据集专属错拼表。修复发生在去重之后，比较模型前单独检查因此产生的文本碰撞。
+- `experiments/embedding_pipeline.ipynb` trains one name from `train_registry`, then every classifier in `registry`.
+- `experiments/analytics_pipeline.ipynb` runs one `register` name across `predict_registry`. `REBUILD = True` trains those embeddings; `False` loads saved vectors.
+- `experiments/para_tuning/para_tuning_pipeline.ipynb` tunes the written `EMBEDDING_MODEL` and `ANALYTICS_MODEL` with k-fold. Fold vectors go under `data/processed/temp/` and do not replace the shared split.
 
-## 缓存
+`load_prediction_data()` reads every saved prediction. Personal notebooks pass `model_names`. The reported comparison uses the test score.
 
-实验 notebook 里的 `REBUILD` 只决定是否重建这个入口需要的输入，不决定模型是否训练。主 notebook 用 `RUN`：`rebuild` 只重建输入，训练、预测、baseline 和分类器各自有开关。
+## Text and cache
 
-- 主 notebook 和 embedding 实验：`True` 从 CSV 做到编码后的 train、valid、test；`False` 读取已有 split。默认比例是 `(7, 1, 2)`。`weight` 只加在拟合用的那一份上。
-- analytics 实验：`True` 还会训练每一个已注册 embedding；`False` 按注册名读取向量。
-- 调参实验：`True` 在默认训练池上做 K 折，折向量写到 `data/processed/temp/{EMBEDDING_MODEL}_para/fold_<i>/`；`False` 用 `KFold.open` 读取。
-- 首次拉取没有 `data/processed/`，先重建。之后只改自己的模型时，可以复用匹配的输入缓存。
-- 改了清洗、文本特征、`replacement.json`、seed 或公共编码之后，重建 split 和全部下游结果。只改一个 embedding 时，更新它的向量和依赖它的分类器。只改分类器时，更新该模型的预测。
-- 主 notebook 复用 split 时，把 `RUN["rebuild"]` 设为 `False`。直接 Run All 仍会执行原始数据展示；EDA 跟 `rebuild` 走。
+`data_cleaning()` filters rows, applies the configured replacements, removes one paired outer quote, normalizes whitespace, lowercases, deduplicates reviews, and adds `days`, `usefulCount_log`, and `rating_p1`. `text_feature_engineering()` writes whitespace, contraction, and dose repairs back to `review`, then tokenizes a temporary copy and keeps negation and degree words. The main notebook enables bigrams. `baseline_text_feature_engineering()` only tokenizes `review` for the `tfidf` path. `fit_phrases(train_df)` fits phrases on the training `words` column. Details are in [docs/interface.md](docs/interface.md).
 
-主 notebook 把 `train_embedding` 设为 `False` 时跳过注册 embedding 的训练，`predict_embedding` 读取已保存模型。实验 notebook 默认仍会训练。把实验里的 `REBUILD` 改成 `False` 不会跳过训练。只有表示与当前数据、编码和参数匹配时，才可以跳过对应的 `train` 调用。
+`REBUILD` in an experiment notebook only rebuilds that notebook's inputs. In `project.ipynb`, `rebuild` prepares inputs and the other `RUN` keys turn later stages on or off. A fresh checkout has no `data/processed/` cache, so rebuild once. Changes to cleaning, text features, `replacement.json`, the seed, or shared encoding require a new split and everything downstream. An embedding change requires new vectors and new predictions from the classifiers that read them. A classifier change requires new predictions for that model.
 
-## 目录
+## Layout
 
 ```text
-AGENTS.md                         AI 的修改边界
-project.ipynb                     公共集成入口
-src/cleaning.py                   数据清洗
-src/text_features.py              文本特征与短语
-src/seed.py                       项目种子 `SEED` 和 `seed(level)`
-src/split.py                      哈希划分与训练权重
-src/encoder.py                    condition / drug 编码
-src/embeddings/<name>.py          各 embedding
-src/analytics/<name>.py           各分类器
-src/stacking/stacking.py          二层 stacking
-src/stacking/model/               加权多项逻辑回归，训练后生成
-src/evaluation.py                 评分
-src/dataOI.py                     读取、保存和缓存释放
-src/paths.py                      路径常量
-replacement.json                  condition 全名与 HTML 实体
-experiments/                      单模型入口
-final/final_submission.ipynb      最终汇总入口
-src/embeddings/models/            拟合好的表示
-data/processed/                   本地 split、向量、预测和 stacking OOF
+project.ipynb                     integration runner
+src/cleaning.py                   cleaning
+src/text_features.py              text features and phrases
+src/split.py                      hash split and training weights
+src/encoder.py                    condition and drug encoding
+src/embeddings/<name>.py          embeddings
+src/analytics/<name>.py           classifiers
+src/stacking/stacking.py          second-level model
+src/evaluation.py                 scoring
+src/dataOI.py                     read, write, and cache release
+experiments/                      single-model notebooks
+src/embeddings/models/            fitted representations
+data/processed/                   local split, vectors, predictions, and OOF
 ```
 
-提交时带上自己的模型实现和 embedding 拟合产物，以及集成人确认过的依赖改动。分类器不提交模型、阈值或搜索文件。`data/processed/` 不提交。提交 notebook 前清除输出。
+Commit the model implementation, fitted embeddings, and agreed dependency changes. Do not commit classifier files, `data/processed/`, or notebook outputs.
