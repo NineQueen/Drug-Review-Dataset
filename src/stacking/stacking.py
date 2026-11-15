@@ -20,6 +20,14 @@ K = 3
 NUM_CLASSES = 10
 WEIGHT_EXPONENT = 0.75
 PRIOR_EXPONENT = 0.0
+DEFAULT_PARA = {
+    "regParam": 0.3,
+    "maxIter": 100,
+    "elasticNetParam": 0.0,
+    "tol": 1e-7,
+    "weight_exponent": WEIGHT_EXPONENT,
+    "prior_exponent": PRIOR_EXPONENT,
+}
 # Improved TF-IDF logistic regression stays outside both registries.
 # Its saved full-data predictions are `lr_improved__tfidf_improved`.
 IMPROVED_EMBEDDING = "tfidf_improved"
@@ -78,15 +86,19 @@ class StackingModel:
             if not raw_released:
                 self.data_oi.unpersist(df_train_raw)
 
-    def train(self) -> None:
-        """Fit weighted multinomial logistic regression on the out-of-fold scores."""
+    def train(self, para: dict | None = None) -> None:
+        """Fit weighted multinomial logistic regression on the out-of-fold scores.
+
+        Passed keys override `DEFAULT_PARA`. The incoming dict is not changed.
+        """
+        params = {**DEFAULT_PARA, **(para or {})}
         pair_names = self.data_oi.load_stacking_manifest()
         with self.data_oi.scope():
             features = _feature_frame(
                 self.data_oi.load_stacking_oof(pair_names), pair_names
             ).cache()
             features.count()
-            pipeline, meta = _fit_weighted_lr(features, pair_names)
+            pipeline, meta = _fit_weighted_lr(features, pair_names, params)
             self.data_oi.save_stacking_model(pipeline, meta)
         print(
             f"Weighted multinomial logistic regression on {len(pair_names)} models, "
@@ -290,10 +302,10 @@ def _training_summary(frame: DataFrame) -> tuple[list[int], int]:
     return counts, min_width
 
 
-def _meta_weights(counts: list[int]) -> list[float]:
-    """Class weights from n_c ** -0.75, scaled so the sample weights sum to N."""
+def _meta_weights(counts: list[int], exponent: float) -> list[float]:
+    """Class weights from n_c ** -exponent, scaled so the sample weights sum to N."""
     total = float(sum(counts))
-    raw = [count ** (-WEIGHT_EXPONENT) for count in counts]
+    raw = [count ** (-exponent) for count in counts]
     normalizer = total / sum(count * raw_weight for count, raw_weight in zip(counts, raw))
     return [raw_weight * normalizer for raw_weight in raw]
 
@@ -316,7 +328,14 @@ def _check_weight_sum(frame: DataFrame, total: int) -> None:
         raise ValueError(f"meta weights sum to {weight_sum} over {rows} rows; expected {total}")
 
 
-def _fit_weighted_lr(features: DataFrame, pair_names: list[str]) -> tuple[PipelineModel, dict]:
+def _fit_weighted_lr(
+    features: DataFrame, pair_names: list[str], para: dict
+) -> tuple[PipelineModel, dict]:
+    params = dict(para)
+    weight_exponent = float(params.pop("weight_exponent"))
+    prior_exponent = float(params.pop("prior_exponent"))
+    for key in ("weightCol", "featuresCol", "labelCol", "family", "standardization"):
+        params.pop(key, None)
     counts, width = _training_summary(features)
     expected = len(pair_names) * NUM_CLASSES
     if width != expected:
@@ -325,7 +344,7 @@ def _fit_weighted_lr(features: DataFrame, pair_names: list[str]) -> tuple[Pipeli
             f"{len(pair_names)} models need {expected}"
         )
     total = sum(counts)
-    weights = _meta_weights(counts)
+    weights = _meta_weights(counts, weight_exponent)
     priors = [count / total for count in counts]
     weighted = features.withColumn("meta_weight", _weight_column(weights))
     _check_weight_sum(weighted, total)
@@ -341,13 +360,10 @@ def _fit_weighted_lr(features: DataFrame, pair_names: list[str]) -> tuple[Pipeli
         weightCol="meta_weight",
         family="multinomial",
         standardization=False,
-        regParam=0.3,
-        elasticNetParam=0.0,
-        maxIter=100,
-        tol=1e-7,
+        **params,
     ).fit(scaler_model.transform(weighted))
-    # thresholds[c] = prior_c ** 0.0, listed from class 0 through class 9.
-    lr_model = lr_model.setThresholds([float(prior ** PRIOR_EXPONENT) for prior in priors])
+    # thresholds[c] = prior_c ** prior_exponent, listed from class 0 through class 9.
+    lr_model = lr_model.setThresholds([float(prior ** prior_exponent) for prior in priors])
     if int(lr_model.numFeatures) != expected or int(lr_model.numClasses) != NUM_CLASSES:
         raise ValueError(
             f"fitted logistic regression has {lr_model.numFeatures} features and "
@@ -358,8 +374,8 @@ def _fit_weighted_lr(features: DataFrame, pair_names: list[str]) -> tuple[Pipeli
         "pairs": list(pair_names),
         "num_classes": NUM_CLASSES,
         "input_dim": width,
-        "weight_exponent": WEIGHT_EXPONENT,
-        "prior_exponent": PRIOR_EXPONENT,
+        "weight_exponent": weight_exponent,
+        "prior_exponent": prior_exponent,
         "priors": priors,
     }
     return pipeline, meta

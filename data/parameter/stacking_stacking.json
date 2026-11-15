@@ -1,0 +1,11 @@
+{
+  "embedding_model": "stacking",
+  "analytics_model": "stacking",
+  "weighted_f1": 0.4107414543850979,
+  "weight_exponent": 0.5,
+  "prior_exponent": 0.15,
+  "regParam": 0.006,
+  "elasticNetParam": 0.0,
+  "maxIter": 300,
+  "tol": 1e-07
+}

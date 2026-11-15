@@ -13,8 +13,8 @@
   ],
   "num_classes": 10,
   "input_dim": 100,
-  "weight_exponent": 0.75,
-  "prior_exponent": 0.0,
+  "weight_exponent": 0.5,
+  "prior_exponent": 0.15,
   "priors": [
     0.1354370179948586,
     0.042197943444730074,

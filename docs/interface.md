@@ -81,7 +81,7 @@ The result name is `{analytics}__{embedding}`.
 
 `StackingModel` is not registered. `load_data()` builds 3-fold out-of-fold scores on `train_raw.parquet` with `seed(1)`. Each fold runs the registered embedding-classifier pairs, then `tfidf_improved` with `improved_baseline()`. That extra pair is `lr_improved__tfidf_improved`. The unweighted baseline is not included. Fold embeddings are written under `data/processed/stacking/models` and deleted after the fold.
 
-`train()` concatenates the ten 10-d outputs in manifest order. It fits a standard scaler and a multinomial logistic regression on the training OOF only: `regParam=0.3`, `elasticNetParam=0.0`, `maxIter=100`, `standardization=False`, class weights `n_c ** -0.75`. Decision thresholds are `prior ** 0.0`, so the prediction is the argmax of the raw probabilities. The pipeline is saved to `src/stacking/model/`.
+`train(para=None)` concatenates the ten 10-d outputs in manifest order. Passed keys override `DEFAULT_PARA`; a missing key keeps `regParam=0.3`, `elasticNetParam=0.0`, `maxIter=100`, `tol=1e-7`, weight exponent `0.75`, and prior exponent `0.0`. It fits a standard scaler and a multinomial logistic regression on the training OOF only, with `standardization=False`. Class weights are `n_c ** -weight_exponent`. Decision thresholds are `prior ** prior_exponent`. The pipeline is saved to `src/stacking/model/`.
 
 `predict()` reads the ten saved full-data prediction sets and writes `stacking__stacking`.
 
