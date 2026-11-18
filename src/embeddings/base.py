@@ -33,7 +33,7 @@ class EmbeddingModel:
     OUTPUT_COLUMNS = (
         "uniqueID",
         "rating",
-        "rating_p1",
+        "rating_m1",
         "weight",
         "condition_idx",
         "condition_vec",

@@ -1,6 +1,6 @@
 # DSAI4205 Big Data Analytics — UCI Drug Review
 
-Predict drug-review `rating` as ten classes, 1–10, with PySpark. Shared code is in `src/`. The integration notebook is `project.ipynb`. The required baseline is TF-IDF with unweighted logistic regression; a weighted logistic regression is trained separately. Columns, registration, and outputs are in [docs/interface.md](docs/interface.md).
+Predict drug-review `rating` as ten classes, 1–10, with PySpark. Shared code is in `src/`. The final project notebook is `project.ipynb`. The required baseline is TF-IDF with unweighted logistic regression; a weighted logistic regression is trained separately. Columns, registration, and outputs are in [docs/interface.md](docs/interface.md).
 
 ## Setup
 
@@ -53,14 +53,14 @@ Other entries:
 
 ## Text and cache
 
-`data_cleaning()` filters rows, applies the configured replacements, removes one paired outer quote, normalizes whitespace, lowercases, deduplicates reviews, and adds `days`, `usefulCount_log`, and `rating_p1`. `text_feature_engineering()` writes whitespace, contraction, and dose repairs back to `review`, then tokenizes a temporary copy and keeps negation and degree words. The main notebook enables bigrams. `baseline_text_feature_engineering()` only tokenizes `review` for the `tfidf` path. `fit_phrases(train_df)` fits phrases on the training `words` column. Details are in [docs/interface.md](docs/interface.md).
+`data_cleaning()` filters rows, applies the configured replacements, removes one paired outer quote, normalizes whitespace, lowercases, deduplicates reviews, and adds `days`, `usefulCount_log`, and `rating_m1`. `text_feature_engineering()` writes whitespace, contraction, and dose repairs back to `review`, then tokenizes a temporary copy and keeps negation and degree words. The main notebook enables bigrams. `baseline_text_feature_engineering()` only tokenizes `review` for the `tfidf` path. `fit_phrases(train_df)` fits phrases on the training `words` column. Details are in [docs/interface.md](docs/interface.md).
 
 `REBUILD` in an experiment notebook only rebuilds that notebook's inputs. In `project.ipynb`, `rebuild` prepares inputs and the other `RUN` keys turn later stages on or off. A fresh checkout has no `data/processed/` cache, so rebuild once. Changes to cleaning, text features, `replacement.json`, the seed, or shared encoding require a new split and everything downstream. An embedding change requires new vectors and new predictions from the classifiers that read them. A classifier change requires new predictions for that model.
 
 ## Layout
 
 ```text
-project.ipynb                     integration runner
+project.ipynb                     final project notebook
 src/cleaning.py                   cleaning
 src/text_features.py              text features and phrases
 src/split.py                      hash split and training weights

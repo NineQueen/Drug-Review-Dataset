@@ -16,7 +16,7 @@ Fit vocabulary, IDF, encoders, scalers, reducers, classifiers, thresholds, and s
 
 `split` uses `pmod(xxhash64(uniqueID, seed), 10000)` with positive integer ratios, default `(7, 1, 2)`. `seed(0)` cuts the full table. `weight` attaches the class weight to the fitting split only: `n / (sqrt(class_count) * sum of sqrt(class_count))`, so the weights sum to `n`.
 
-`days` is days since 1970-01-01. `usefulCount_log` is `log1p(usefulCount)`. `rating` stays 1–10. Classifiers train on `rating_p1 = rating - 1`, range 0–9.
+`days` is days since 1970-01-01. `usefulCount_log` is `log1p(usefulCount)`. `rating` stays 1–10. Classifiers train on `rating_m1 = rating - 1`, range 0–9.
 
 Columns the models see:
 
@@ -56,7 +56,7 @@ def my_classifier(self, para: dict = DEFAULT_PARA) -> tuple[DataFrame, DataFrame
 
 ## Embedding output
 
-`predict` adds a Spark ML vector column `embedding`, then keeps `uniqueID`, `rating`, `rating_p1`, training `weight`, `condition_idx`, `condition_vec`, `days`, `usefulCount_log`, `drugName_idx`, `drugName_vec`, and `embedding`. Every row is kept, and the three frames share one dimension. `train` and `predict` for GloVe, Word2Vec, BERT, and TF-IDF accept `model_dir`. The default directory is `src/embeddings/models/<name>/`.
+`predict` adds a Spark ML vector column `embedding`, then keeps `uniqueID`, `rating`, `rating_m1`, training `weight`, `condition_idx`, `condition_vec`, `days`, `usefulCount_log`, `drugName_idx`, `drugName_vec`, and `embedding`. Every row is kept, and the three frames share one dimension. `train` and `predict` for GloVe, Word2Vec, BERT, and TF-IDF accept `model_dir`. The default directory is `src/embeddings/models/<name>/`.
 
 ## Analytics output
 

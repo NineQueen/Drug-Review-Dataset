@@ -37,7 +37,7 @@ PARA_RANGE = {
 
 @AnalyticsModel.register("svm")
 def svm(self: AnalyticsModel, para: dict | None = None) -> tuple[DataFrame, DataFrame, DataFrame]:
-    # `rating_p1` is 0-9. Passed keys override DEFAULT_PARA.
+    # `rating_m1` is 0-9. Passed keys override DEFAULT_PARA.
     # Manual One-vs-Rest: Spark's OneVsRest drops weightCol before fitting
     # each sub-classifier, so each binary task applies balanced weights
     # w = (n / (2 * n_class)) ** alpha itself and the prediction is the
@@ -52,15 +52,15 @@ def svm(self: AnalyticsModel, para: dict | None = None) -> tuple[DataFrame, Data
 
     n = train_df.count()
     class_counts = {
-        r["rating_p1"]: r["count"]
-        for r in train_df.groupBy("rating_p1").count().collect()
+        r["rating_m1"]: r["count"]
+        for r in train_df.groupBy("rating_m1").count().collect()
     }
     classes = sorted(class_counts)
 
     def _fit_one(c):
         n_pos, n_neg = class_counts[c], n - class_counts[c]
         binary = train_df.withColumn(
-            "bin_label", (F.col("rating_p1") == c).cast("int")
+            "bin_label", (F.col("rating_m1") == c).cast("int")
         ).withColumn(
             "bin_weight",
             F.when(F.col("bin_label") == 1,

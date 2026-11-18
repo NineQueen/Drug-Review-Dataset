@@ -58,9 +58,9 @@ class MLPTrainer:
         self.mean = scaler.mean.toArray().astype(np.float32)
         self.scale = scaler.std.toArray().astype(np.float32)
         self.scale[self.scale == 0] = 1
-        columns = ["features", "rating_p1", weight_col]
+        columns = ["features", "rating_m1", weight_col]
         self.rows = list(train.orderBy("uniqueID").select(*columns).toLocalIterator())
-        self.targets = torch.tensor([row.rating_p1 for row in self.rows], dtype=torch.long)
+        self.targets = torch.tensor([row.rating_m1 for row in self.rows], dtype=torch.long)
         self.weights = torch.from_numpy(
             np.asarray([row[weight_col] for row in self.rows], dtype=np.float32)
         )
@@ -105,8 +105,8 @@ class MLPTrainer:
     def fit(self, early_stop: DataFrame) -> None:
         from sklearn.metrics import f1_score
 
-        rows = list(early_stop.select("rating_p1", "features").toLocalIterator())
-        labels = np.asarray([row.rating_p1 for row in rows], dtype=np.int64)
+        rows = list(early_stop.select("rating_m1", "features").toLocalIterator())
+        labels = np.asarray([row.rating_m1 for row in rows], dtype=np.int64)
         self.history = []
         best_score = last_improvement = -float("inf")
         stale_epochs = 0

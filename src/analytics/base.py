@@ -30,7 +30,7 @@ class AnalyticsModel:
 
     Each returned frame has `uniqueID`, `rating`, `prediction`, and
     `probability`. `rating` stays on the original 1-10 scale. `prediction`
-    uses the same 0-9 classes as `rating_p1`. Leave the prediction on that
+    uses the same 0-9 classes as `rating_m1`. Leave the prediction on that
     scale; `Scorer` builds `rating_pred = prediction + 1`. `probability` is an
     array of 10 doubles indexed by class. SVM stores one-vs-rest scores there;
     the other classifiers store class probabilities. The function returns those

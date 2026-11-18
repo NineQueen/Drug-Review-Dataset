@@ -33,10 +33,10 @@ PARA_RANGE = {
 
 @AnalyticsModel.baseline_register()
 def lr_baseline(self: AnalyticsModel) -> tuple[DataFrame, DataFrame, DataFrame]:
-    # `rating_p1` is 0–9. This unweighted model is the required baseline.
+    # `rating_m1` is 0–9. This unweighted model is the required baseline.
     # Exclude the drug target mean so a training label cannot enter this feature.
     train_df, valid_df,test_df = self._feature_transform(FEATURES)
-    lr_model = LogisticRegression(featuresCol="features", labelCol="rating_p1").fit(train_df)
+    lr_model = LogisticRegression(featuresCol="features", labelCol="rating_m1").fit(train_df)
     return _prediction_frames(lr_model, train_df, valid_df, test_df)
 
 
@@ -69,7 +69,7 @@ def improved_baseline(
     self: AnalyticsModel,
     para: dict | None = None,
 ) -> tuple[DataFrame, DataFrame, DataFrame]:
-    # `rating_p1` is 0–9. Passed keys override DEFAULT_PARA.
+    # `rating_m1` is 0–9. Passed keys override DEFAULT_PARA.
     # Standardization stays off, so only this model scales `days` from the training rows.
     params = {
         **DEFAULT_PARA,
@@ -85,7 +85,7 @@ def improved_baseline(
         self.train_embedding, self.valid_embedding, self.test_embedding = stored
     lr_improved_model = LogisticRegression(
         featuresCol="features",
-        labelCol="rating_p1",
+        labelCol="rating_m1",
         standardization=False,
         **params,
     ).fit(train_df)

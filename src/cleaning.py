@@ -104,16 +104,16 @@ def data_cleaning(df: DataFrame) -> DataFrame:
     )
     print("Added `usefulCount_log` = log(1 + `usefulCount`)")
 
-    # One numeric date column. `rating_p1` is the 0–9 classification label.
+    # One numeric date column. `rating_m1` is the 0–9 classification label.
     print("Added `days` = days since 1970-01-01 from `date`")
     df = df.withColumn(
         "days",
         F.unix_date("date")
     )
 
-    print("Set `rating_p1` = `rating` - 1")
+    print("Set `rating_m1` = `rating` - 1")
     df = df.withColumn(
-        "rating_p1",
+        "rating_m1",
         F.col("rating") - 1
     )
     return df

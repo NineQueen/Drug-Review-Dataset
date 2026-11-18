@@ -55,7 +55,7 @@ def xgboost(
     # SparkXGBClassifier infers the multiclass objective from training labels.
     model = SparkXGBClassifier(
         features_col="features",
-        label_col="rating_p1",
+        label_col="rating_m1",
         prediction_col="prediction",
         **params,
     ).fit(train_df)

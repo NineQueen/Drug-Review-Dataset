@@ -48,7 +48,7 @@ def random_forest(
     )
     model = RandomForestClassifier(
         featuresCol="features",
-        labelCol="rating_p1",
+        labelCol="rating_m1",
         **params,
     ).fit(train_df)
     columns = ["uniqueID", "rating", "prediction", "probability"]

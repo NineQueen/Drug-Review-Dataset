@@ -260,7 +260,7 @@ def _feature_frame(frames: dict[str, DataFrame], pair_names: list[str]) -> DataF
     return joined.select(
         "uniqueID",
         "rating",
-        (F.col("rating") - F.lit(1)).alias("rating_p1"),
+        (F.col("rating") - F.lit(1)).alias("rating_m1"),
         array_to_vector(F.concat(*pieces)).alias("features"),
     )
 
@@ -277,7 +277,7 @@ def _training_summary(frame: DataFrame) -> tuple[list[int], int]:
         F.sum(F.when(width().isNull(), F.lit(1)).otherwise(F.lit(0))).alias("null_width"),
     ]
     for label in range(NUM_CLASSES):
-        matched = F.when(F.col("rating_p1") == F.lit(label), F.lit(1)).otherwise(F.lit(0))
+        matched = F.when(F.col("rating_m1") == F.lit(label), F.lit(1)).otherwise(F.lit(0))
         columns.append(F.sum(matched).alias(f"c{label}"))
     row = frame.agg(*columns).collect()[0]
     counts = [int(row[f"c{label}"] or 0) for label in range(NUM_CLASSES)]
@@ -285,7 +285,7 @@ def _training_summary(frame: DataFrame) -> tuple[list[int], int]:
     covered = sum(counts)
     if covered != total:
         raise ValueError(
-            "training OOF rating_p1 must be an integer from 0 to "
+            "training OOF rating_m1 must be an integer from 0 to "
             f"{NUM_CLASSES - 1}; {total - covered} rows are outside that range"
         )
     missing = [label for label, count in enumerate(counts) if count == 0]
@@ -314,7 +314,7 @@ def _weight_column(weights: list[float]):
     entries = []
     for label, value in enumerate(weights):
         entries.extend((F.lit(label), F.lit(float(value))))
-    return F.create_map(*entries)[F.col("rating_p1").cast("int")]
+    return F.create_map(*entries)[F.col("rating_m1").cast("int")]
 
 
 def _check_weight_sum(frame: DataFrame, total: int) -> None:
@@ -356,7 +356,7 @@ def _fit_weighted_lr(
     ).fit(weighted)
     lr_model = LogisticRegression(
         featuresCol="scaled_features",
-        labelCol="rating_p1",
+        labelCol="rating_m1",
         weightCol="meta_weight",
         family="multinomial",
         standardization=False,
