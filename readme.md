@@ -1,10 +1,14 @@
 # DSAI4205 Big Data Analytics — UCI Drug Review
 
-Predict drug-review `rating` as ten classes, 1–10, with PySpark. Shared code is in `src/`. The final project notebook is `project.ipynb`. The required baseline is TF-IDF with unweighted logistic regression; a weighted logistic regression is trained separately. Columns, registration, and outputs are in [docs/interface.md](docs/interface.md).
+Predict drug-review `rating` as ten classes, 1–10, with PySpark. Shared code is in `src/`. The final notebook is `project.ipynb`. The required baseline is TF-IDF with unweighted logistic regression. A weighted logistic regression is trained separately. Columns, registration, and outputs are specified in [docs/interface.md](docs/interface.md).
+
+Nine embedding–classifier pairs and the weighted TF-IDF logistic regression feed one stacking model.
+
+![Nine embedding–analytics pairs and the improved baseline feed one stacking model](docs/Overview.png)
 
 ## Setup
 
-Python 3.12, PySpark 4.2.0, and Java 21. Point `JAVA_HOME` at Java 21. `DataEnv` is only the local environment name. The Jupyter kernel must be that same Python.
+Python 3.12, PySpark 4.2.0, and Java 21. Point `JAVA_HOME` at Java 21. `DataEnv` is the local environment name. The Jupyter kernel must use that same Python.
 
 ```bash
 conda activate DataEnv
@@ -14,11 +18,11 @@ python -m nltk.downloader averaged_perceptron_tagger_eng wordnet
 
 Create the environment with `conda create -n DataEnv python=3.12` if it is missing, and install `ipykernel` there if the editor asks for it.
 
-The delivered Word2Vec model uses NLTK 3.9.3 and checks the noun-lemmatizer resource fingerprint. Run the download once on this machine. Spark Python workers must be able to read the same resources. After an NLTK upgrade or a resource change, retrain Word2Vec.
+The delivered Word2Vec model uses NLTK 3.9.3 and checks the noun-lemmatizer resource fingerprint. Download the resources once on this machine. Spark Python workers must be able to read the same resources. After an NLTK upgrade or a resource change, retrain Word2Vec.
 
-Raw data is `data/raw/drugsComTrain_raw.csv`. Replacements are in `replacement.json`. Raw data and fitted embeddings are part of the repository. Split, embedding frames, and temp files under `data/processed/` stay out of Git. Prediction frames and stacking outputs are kept. Classifiers are not saved as model files. Start notebooks from the repository root. Imports also walk upward to `src/` and `project.ipynb`, so a notebook started in `experiments/` can still import the shared package.
+Raw data is `data/raw/drugsComTrain_raw.csv`. Replacements are in `replacement.json`. Raw data and fitted embeddings are part of the repository. Split frames, embedding frames, and temp files under `data/processed/` stay out of Git. Prediction frames and stacking outputs are kept. Classifiers are not saved as model files. Start notebooks from the repository root. Imports also walk upward until they find `src/` and `project.ipynb`, so a notebook started in `experiments/` can still import the shared package.
 
-`project.ipynb` uses `local[4]` and a `16g` driver. Experiment notebooks set their own master and memory in the first cell. The entry notebook creates the Spark session once. Restart the kernel after changing driver memory, after a `Connection refused` JVM exit, or after editing an imported `src/` function.
+`project.ipynb` uses `local[4]` and an `8g` driver. Experiment notebooks set their own master and memory in the first cell. The entry notebook creates the Spark session once. Restart the kernel after changing driver memory, after a `Connection refused` JVM exit, or after editing an imported `src/` function. `spark.driver.memory` is read only when the JVM starts.
 
 ## What to edit
 
@@ -38,15 +42,15 @@ Register a model with its decorator and select that name in the existing experim
 - `train_embedding` fits `train_registry` and saves the models.
 - `predict_embedding` loads those models and writes vectors.
 - `baseline` runs tokenizer-only TF-IDF (`tfidf` / `baseline()` / `lr__tfidf`) and engineered-text TF-IDF (`tfidf_improved` / `improved_baseline()` / `lr_improved__tfidf_improved`).
-- `analytics` runs every classifier in `registry` on the saved vectors. TF-IDF is outside both loops.
+- `analytics` runs every classifier in `registry` on the saved vectors. TF-IDF stays outside both loops.
 - `load_stacking`, `train_stacking`, and `predict_stacking` build out-of-fold scores, fit the second-level model, and write `stacking__stacking`.
 
-A later stage reads saved files, so an earlier switch can stay off. Call `fit_phrases(df_train)` before constructing `EmbeddingModel` when the representation needs phrases.
+A later stage reads files already on disk, so an earlier switch can stay off. Call `fit_phrases(df_train)` before constructing `EmbeddingModel` when the representation needs phrases.
 
 Other entries:
 
 - `experiments/embedding_pipeline.ipynb` trains one name from `train_registry`, then every classifier in `registry`.
-- `experiments/analytics_pipeline.ipynb` runs one `register` name across `predict_registry`. `REBUILD = True` trains those embeddings; `False` loads saved vectors.
+- `experiments/analytics_pipeline.ipynb` runs one `register` name across `predict_registry`. `REBUILD = True` trains those embeddings. `False` loads saved vectors.
 - `experiments/para_tuning/para_tuning_pipeline.ipynb` tunes the written `EMBEDDING_MODEL` and `ANALYTICS_MODEL` with k-fold. Fold vectors go under `data/processed/temp/` and do not replace the shared split.
 
 `load_prediction_data()` reads every saved prediction. Personal notebooks pass `model_names`. The reported comparison uses the test score.
@@ -75,4 +79,4 @@ src/embeddings/models/            fitted representations
 data/processed/                   local split, vectors, predictions, and OOF
 ```
 
-Commit the model implementation, fitted embeddings, prediction frames, stacking outputs, and agreed dependency changes. Do not commit classifier files, split, embedding frames, temp caches, or notebook outputs.
+Commit the model implementation, fitted embeddings, prediction frames, stacking outputs, and agreed dependency changes. Do not commit classifier files, the split, embedding frames, temp caches, or notebook outputs.

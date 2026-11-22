@@ -15,6 +15,8 @@ FEATURES = ["embedding", "condition_vec", "days", "usefulCount_log", "drugName_v
 NUM_CLASSES = 10
 # 90% fits the network. The other 10% of the training frame is the early-stop set.
 EARLY_STOP_RATIOS = (9, 1)
+# One wide feature partition can exhaust the driver while earlier caches are still resident.
+PREDICT_PARTITIONS = 32
 
 DEFAULT_PARA = {
     "hidden_layers": (64, 32),
@@ -142,7 +144,12 @@ class MLPTrainer:
     def predict(self, frame: DataFrame) -> DataFrame:
         import torch
 
-        rows = frame.select("uniqueID", "rating", "features").toLocalIterator()
+        # RDD repartition is not coalesced adaptively, so each task result stays small.
+        rows = (
+            frame.select("uniqueID", "rating", "features")
+            .rdd.repartition(PREDICT_PARTITIONS)
+            .toLocalIterator()
+        )
         records = []
         self.network.eval()
         with torch.inference_mode():
@@ -183,4 +190,9 @@ def mlp(
         "history": trainer.history,
     }
     print(f"MLP best epoch: {trainer.best_epoch}/{len(trainer.history)}, early-stop F1 {trainer.best_early_stop_weighted_f1:.5f}")
+    del trainer.rows
+    fit_df.unpersist(blocking=True)
+    early_stop.unpersist(blocking=True)
+    for source in (self.train_embedding, self.valid_embedding, self.test_embedding):
+        source.unpersist(blocking=True)
     return trainer.predict(train), trainer.predict(valid), trainer.predict(test)
